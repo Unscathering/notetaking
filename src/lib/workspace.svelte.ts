@@ -13,6 +13,7 @@ import {
 	type CaveMeta,
 	type EntryLook,
 } from "./cave";
+import { readProps, type NoteProps } from "./notes";
 
 export type Panel = "files" | "search" | "tags";
 export type Modal = "palette" | "switcher" | "caves" | "settings";
@@ -31,6 +32,20 @@ class Workspace {
 	sidebarOpen = $state(true);
 	modal: Modal | null = $state(null);
 	saving = $state(false);
+	/** A line to scroll to once a note is open (from search results). */
+	reveal: { path: string; line: number } | null = $state(null);
+	/** Every note's details, kept up to date as notes change. */
+	props = $derived.by(() => {
+		const out = new Map<string, NoteProps>();
+		for (const [p, t] of this.texts) out.set(p, readProps(t));
+		return out;
+	});
+	/** tag → notes with it, most used first. */
+	tags = $derived.by(() => {
+		const out = new Map<string, string[]>();
+		for (const [p, pr] of this.props) for (const t of pr.tags) out.set(t, [...(out.get(t) ?? []), p]);
+		return new Map([...out].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])));
+	});
 	/** The sidebar item being renamed in place. */
 	renaming: string | null = $state(null);
 	private timers = new Map<string, number>();
@@ -55,11 +70,28 @@ class Workspace {
 		for (const f of this.folders) if (!f.includes("/")) this.openFolders.add(f);
 		const start = this.meta.home && this.files.includes(this.meta.home) ? this.meta.home : this.notes[0];
 		if (start) await this.open(start);
+		void this.readAll(cave);
+	}
+
+	/** Reads every note in the background, for search and tags. */
+	async readAll(cave: Cave) {
+		for (const p of this.files) {
+			if (this.cave !== cave) return;
+			if (!this.texts.has(p)) this.texts.set(p, await cave.read(p));
+		}
 	}
 
 	async refresh() {
 		if (!this.cave) return;
 		[this.files, this.folders] = await Promise.all([this.cave.list(), this.cave.listFolders()]);
+		for (const p of [...this.texts.keys()]) if (!this.files.includes(p)) this.texts.delete(p);
+		void this.readAll(this.cave);
+	}
+
+	/** Opens a note and scrolls to a line in it. */
+	async openAt(path: string, line: number) {
+		await this.open(path);
+		this.reveal = { path, line };
 	}
 
 	async saveMeta() {

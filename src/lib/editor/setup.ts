@@ -9,6 +9,7 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
+import { noteHeader } from "./properties";
 
 const highlight = HighlightStyle.define([
 	{ tag: t.heading, color: "var(--heading)", fontWeight: "700" },
@@ -66,6 +67,15 @@ const look = EditorView.theme({
 		backgroundSize: "85%", backgroundPosition: "center", backgroundRepeat: "no-repeat",
 	},
 	".cm-task-done": { color: "var(--muted)", textDecoration: "line-through" },
+	".cm-props": { padding: "0 2px 18px", marginBottom: "6px", borderBottom: "1px solid var(--border)", fontFamily: "var(--font-ui)" },
+	".cm-props-desc": { width: "100%", padding: "2px 0", border: "0", outline: "0", background: "transparent", color: "var(--muted)", font: "italic 1.02em var(--font-editor)" },
+	".cm-props-desc:focus": { color: "var(--text)" },
+	".cm-props-tags": { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", marginTop: "8px" },
+	".cm-tag": { display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 9px", borderRadius: "999px", background: "var(--accent-soft)", color: "var(--accent)", fontSize: "0.8em", fontWeight: "600" },
+	".cm-tag-x": { border: "0", padding: "0 0 0 2px", background: "transparent", color: "inherit", font: "inherit", cursor: "pointer", opacity: "0.6" },
+	".cm-tag-x:hover": { opacity: "1" },
+	".cm-tag-add": { width: "70px", padding: "2px 6px", border: "1px dashed var(--border)", borderRadius: "999px", outline: "0", background: "transparent", color: "var(--text)", fontSize: "0.8em" },
+	".cm-tag-add:focus": { borderColor: "var(--accent)", width: "120px" },
 	".cm-panels": { backgroundColor: "var(--panel)", color: "var(--text)", borderColor: "var(--border)" },
 	".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--accent) 30%, transparent)" },
 	".cm-selectionMatch": { backgroundColor: "var(--hover)" },
@@ -90,6 +100,7 @@ export function editorExtensions(hooks: EditorHooks): Extension[] {
 		markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
 		syntaxHighlighting(highlight),
 		livePreview,
+		noteHeader,
 		wikilinkClicks(hooks.openLink),
 		look,
 		placeholder("Start writing…"),

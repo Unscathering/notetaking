@@ -3,6 +3,8 @@
 	import { inDesktopApp } from "../cave";
 	import { ws } from "../workspace.svelte";
 	import FileTree from "./FileTree.svelte";
+	import SearchPanel from "./SearchPanel.svelte";
+	import TagsPanel from "./TagsPanel.svelte";
 	import { icon } from "./icons";
 
 	let { ms }: { ms: number } = $props();
@@ -29,8 +31,10 @@
 		>
 			<FileTree entries={ws.tree} {ms} />
 		</nav>
+	{:else if ws.panel === "search"}
+		<SearchPanel {ms} />
 	{:else}
-		<p class="soon">{ws.panel === "search" ? "Search" : "Tags"} is coming in the next step.</p>
+		<TagsPanel {ms} />
 	{/if}
 </div>
 
@@ -76,10 +80,6 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 2px 8px 12px;
-	}
-	.soon {
-		padding: 12px 18px;
-		color: var(--muted);
 	}
 	.icon {
 		display: inline-flex;

@@ -4,7 +4,10 @@
 	import { EditorState } from "@codemirror/state";
 	import { EditorView } from "@codemirror/view";
 	import { onMount } from "svelte";
+	import { EditorSelection } from "@codemirror/state";
 	import { editorExtensions } from "./setup";
+	import { frontmatterRange } from "../notes";
+	import { ws } from "../workspace.svelte";
 
 	interface Props {
 		path: string;
@@ -22,8 +25,11 @@
 	function stateFor(p: string, initial: string): EditorState {
 		const saved = states.get(p);
 		if (saved) return saved.state;
+		// Start just after the note's properties, so the header shows tidy.
+		const start = frontmatterRange(initial)?.to ?? 0;
 		return EditorState.create({
 			doc: initial,
+			selection: { anchor: Math.min(start, initial.length) },
 			extensions: editorExtensions({ onChange: (t) => onchange(p, t), openLink: (target) => onopenlink(target) }),
 		});
 	}
@@ -45,6 +51,16 @@
 		view.scrollDOM.scrollTop = next?.scroll ?? 0;
 		shown = p;
 		view.focus();
+	});
+
+	// Jump to a line, for example from a search result.
+	$effect(() => {
+		const r = ws.reveal;
+		if (!view || !r || r.path !== path || shown !== path) return;
+		const line = view.state.doc.line(Math.min(r.line + 1, view.state.doc.lines));
+		view.dispatch({ selection: EditorSelection.cursor(line.from), effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+		view.focus();
+		ws.reveal = null;
 	});
 
 	/** Forget a note's state, for example when its tab closes. */
