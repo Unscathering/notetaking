@@ -1,13 +1,21 @@
-# Publishes a GitHub release whenever a version tag (like v0.2.0) is pushed.
-# Besides the usual files it adds two with names that never change, so one
-# link always downloads the newest Basalt:
+# Publishes a GitHub release whenever the version in src-tauri/tauri.conf.json
+# changes on main (or when started by hand from the Actions tab). The release
+# and its tag (like v0.2.0) are made from that version. Besides the usual files
+# it adds two with names that never change, so one link always downloads the
+# newest Basalt:
 #   releases/latest/download/Basalt-Setup.exe     (installs, with a Start menu entry)
 #   releases/latest/download/Basalt-Portable.exe  (runs straight away, nothing to install)
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: ["src-tauri/tauri.conf.json"]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -30,8 +38,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Basalt ${{ github.ref_name }}
+          tagName: v__VERSION__
+          releaseName: Basalt v__VERSION__
           releaseBody: |
             **Basalt-Setup.exe** installs Basalt (a few MB) and adds it to the Start menu. Installing over an older version updates it; your notes and settings stay.
 
@@ -44,6 +52,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           cp src-tauri/target/release/bundle/nsis/*-setup.exe Basalt-Setup.exe
           cp src-tauri/target/release/basalt.exe Basalt-Portable.exe
-          gh release upload "${{ github.ref_name }}" Basalt-Setup.exe Basalt-Portable.exe --clobber
+          gh release upload "v$version" Basalt-Setup.exe Basalt-Portable.exe --clobber

@@ -98,8 +98,9 @@ check again before a public launch.
 
 1. Raise the version in `package.json`, `src-tauri/tauri.conf.json` and
    `src-tauri/Cargo.toml`.
-2. Commit, then tag and push: `git tag v0.3.0 && git push origin v0.3.0`.
-3. `release.yml` builds it and publishes a release with
+2. Commit and push to `main`. That's all: a changed version starts
+   `release.yml` (it can also be started by hand from the Actions tab).
+3. It builds Basalt, makes the tag (like `v0.3.0`) and publishes a release with
    `Basalt-Setup.exe` and `Basalt-Portable.exe`. The links in the README
    always point at the newest release, and the app's update notice finds it.
    (The repository has to be public for other people to download.)
