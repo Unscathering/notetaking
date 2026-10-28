@@ -9,6 +9,8 @@
 	import CaveSwitcher from "./lib/ui/CaveSwitcher.svelte";
 	import Settings from "./lib/ui/Settings.svelte";
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
+	import BoardView from "./lib/ui/BoardView.svelte";
+	import { isBoardText } from "./lib/board";
 	import { icon } from "./lib/ui/icons";
 	import { COMMANDS, keyName } from "./lib/commands";
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
@@ -19,6 +21,8 @@
 	trackTheme();
 	startWorkspace();
 	const ms = $derived(motionMs(theme));
+	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
+	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));
 	const words = $derived(ws.active ? (ws.texts.get(ws.active) ?? "").split(/\s+/).filter(Boolean).length : 0);
 
 	let editorHost: HTMLElement | undefined = $state();
@@ -64,7 +68,9 @@
 			<div class="tabs" role="tablist">
 				{#each ws.tabs as path (path)}
 					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={ws.active === path}>
-						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>{noteTitle(path)}</button>
+						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
+							{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}
+						</button>
 						<button class="tab-close" onclick={() => ws.closeTab(path)} title="Close (Ctrl+W)">{@html icon("x", 14)}</button>
 					</div>
 				{/each}
@@ -78,7 +84,12 @@
 					<p>Your notes live in caves: plain Markdown files in a folder you choose.</p>
 					<button class="primary" onclick={chooseCave}>Choose a folder for your first cave</button>
 				</div>
+			{:else if ws.active && showingBoard}
+				<BoardView path={ws.active} {ms} />
 			{:else if ws.active}
+				{#if isBoard(ws.active)}
+					<div class="raw-bar">Editing this board as Markdown. <button onclick={() => ws.active && ws.showBoard(ws.active)}>{@html icon("board", 13)} Back to the board</button></div>
+				{/if}
 				<Editor path={ws.active} text={ws.texts.get(ws.active) ?? ""} onchange={(p, t) => ws.edited(p, t)} onopenlink={(t) => ws.follow(t)} />
 			{:else}
 				<div class="start">
@@ -181,6 +192,41 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		cursor: pointer;
+	}
+	.tab-ico {
+		display: inline-flex;
+		margin-right: 6px;
+		vertical-align: -2px;
+		color: var(--accent);
+	}
+	.raw-bar {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding: 7px;
+		background: var(--accent-soft);
+		color: var(--text);
+		font-size: 13px;
+	}
+	.raw-bar button {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 10px;
+		border: 0;
+		border-radius: var(--radius);
+		background: var(--accent);
+		color: var(--on-accent);
+		font: inherit;
+		cursor: pointer;
+	}
+	.editor-area {
+		display: flex;
+		flex-direction: column;
+	}
+	.editor-area > :global(.editor) {
+		flex: 1;
 	}
 	.tab-close {
 		display: inline-flex;

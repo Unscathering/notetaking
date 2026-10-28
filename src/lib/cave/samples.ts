@@ -71,6 +71,31 @@ Spring list, linked from [[Welcome]].
 
 Last year the peppers liked the **south wall** best.
 `,
+	"Ideas/Basalt roadmap.md": `---
+basalt: board
+description: What's being built, and what's next.
+---
+
+## Ideas
+
+- [ ] Planetarium as the graph view #big color:purple
+  Every folder a sun, every note a planet.
+- [ ] Daily notes with a calendar #writing
+
+## Doing
+
+- [ ] Trello-style boards #boards color:orange due:2026-11-02
+  Cards with descriptions, tags, dates and checklists.
+  - [x] Lists and cards
+  - [x] Drag and drop
+  - [ ] Card details
+- [ ] Click to customize #looks color:blue
+
+## Done
+
+- [x] Command bar and palette #ui color:green
+- [x] Search across notes #ui
+`,
 	"Ideas/App ideas.md": `# App ideas
 
 - A planetarium view of all my notes

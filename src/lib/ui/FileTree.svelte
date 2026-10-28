@@ -9,6 +9,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { baseName, parentOf, type CaveEntry } from "../cave";
 	import { ws } from "../workspace.svelte";
+	import { isBoardText } from "../board";
 	import { showMenu, type MenuItem } from "./ContextMenu.svelte";
 	import { icon, type IconName } from "./icons";
 	import FileTree from "./FileTree.svelte";
@@ -80,6 +81,7 @@
 			entry.kind === "folder"
 				? [
 						{ label: "New note here", icon: "pencil", run: () => ws.newNote(entry.path) },
+						{ label: "New board here", icon: "board", run: () => ws.newBoard(entry.path) },
 						{ label: "New folder here", icon: "folderPlus", run: async () => { const p = await ws.newFolder(entry.path); if (p) ws.renaming = p; } },
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
 						{ label: "-" },
@@ -165,7 +167,7 @@
 					ondrop={(e) => ondrop(e, entry, i)}
 					{ondragend}
 				>
-					{#if l.icon}<span class="ico">{@html icon(l.icon as IconName, 15)}</span>{/if}
+					{#if l.icon || isBoardText(ws.texts.get(entry.path) ?? "")}<span class="ico">{@html icon((l.icon as IconName) || "board", 15)}</span>{/if}
 					<span class="name">{label(entry)}</span>
 					{#if ws.meta.home === entry.path}<span class="home" title="Home page">{@html icon("home", 13)}</span>{/if}
 				</button>

@@ -14,6 +14,7 @@ import {
 	type EntryLook,
 } from "./cave";
 import { readProps, type NoteProps } from "./notes";
+import { newBoardText } from "./board";
 
 export type Panel = "files" | "search" | "tags";
 export type Modal = "palette" | "switcher" | "caves" | "settings";
@@ -46,6 +47,8 @@ class Workspace {
 		for (const [p, pr] of this.props) for (const t of pr.tags) out.set(t, [...(out.get(t) ?? []), p]);
 		return new Map([...out].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])));
 	});
+	/** Boards being edited as plain Markdown instead of as a board. */
+	rawBoards = new SvelteSet<string>();
 	/** The sidebar item being renamed in place. */
 	renaming: string | null = $state(null);
 	private timers = new Map<string, number>();
@@ -86,6 +89,18 @@ class Workspace {
 		[this.files, this.folders] = await Promise.all([this.cave.list(), this.cave.listFolders()]);
 		for (const p of [...this.texts.keys()]) if (!this.files.includes(p)) this.texts.delete(p);
 		void this.readAll(this.cave);
+	}
+
+	showRaw(path: string) {
+		this.rawBoards.add(path);
+	}
+
+	showBoard(path: string) {
+		this.rawBoards.delete(path);
+	}
+
+	async newBoard(folder = "", name = "Untitled board") {
+		return this.newNote(folder, name, newBoardText());
 	}
 
 	/** Opens a note and scrolls to a line in it. */
