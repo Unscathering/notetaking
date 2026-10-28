@@ -1,0 +1,26 @@
+[package]
+name = "basalt"
+version = "0.1.0"
+description = "A fast, light, fully customizable app for Markdown notes."
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "basalt_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+
+# Small, fast release builds.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

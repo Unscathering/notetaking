@@ -1,0 +1,48 @@
+/* Page-wide basics. Every color, font and size comes from the theme's variables. */
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ui);
+	font-size: 14px;
+	-webkit-font-smoothing: antialiased;
+	transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#app {
+	height: 100%;
+}
+::selection {
+	background: var(--accent-soft);
+}
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+::-webkit-scrollbar-thumb {
+	border: 3px solid transparent;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--muted) 35%, transparent) padding-box;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+	* {
+		transition-duration: 0ms !important;
+		animation-duration: 0ms !important;
+	}
+}

@@ -1,0 +1,36 @@
+{
+	"name": "basalt",
+	"private": true,
+	"version": "0.1.0",
+	"description": "A fast, light, fully customizable app for Markdown notes.",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"check": "svelte-check --tsconfig ./tsconfig.json",
+		"tauri": "tauri"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"@codemirror/commands": "^6.11.1",
+		"@codemirror/lang-markdown": "^6.5.2",
+		"@codemirror/language": "^6.13.1",
+		"@codemirror/language-data": "^6.5.2",
+		"@codemirror/search": "^6.7.2",
+		"@codemirror/state": "^6.7.6",
+		"@codemirror/view": "^6.43.15",
+		"@lezer/highlight": "^1.2.5",
+		"@tauri-apps/api": "^2.12.4",
+		"@tauri-apps/plugin-dialog": "^2.8.4",
+		"@tauri-apps/plugin-fs": "^2.7.1"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"@tauri-apps/cli": "^2.12.4",
+		"@tsconfig/svelte": "^5.0.8",
+		"svelte": "^5.57.3",
+		"svelte-check": "^4.7.7",
+		"typescript": "^5.9.3",
+		"vite": "^8.3.5"
+	}
+}
