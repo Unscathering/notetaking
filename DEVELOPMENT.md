@@ -62,7 +62,10 @@ check again before a public launch.
   about the look. `agent.svelte.ts` runs the conversation (live steps the
   user can open, no repeated calls, at most two memories a message, older
   messages trimmed to fit the engine's `CONTEXT`) and the memory note
-  (`.basalt/ai/memory.md` in the cave, hidden from the sidebar).
+  (`.basalt/ai/memory.md` in the cave, hidden from the sidebar). It also
+  keeps saved chats (`.basalt/ai/chats/`, listed in `.basalt/ai/chats.json`)
+  and projects: a chat can belong to a folder, whose chats share a memory in
+  `.basalt/ai/projects/`. The speed test is `speedTest` in `writer.ts`.
   The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
   `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
   lets you try it without the desktop app.
