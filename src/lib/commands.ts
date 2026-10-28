@@ -5,6 +5,7 @@ import { ws } from "./workspace.svelte";
 import { writing } from "./writing.svelte";
 import { checkForUpdate, updates } from "./updates.svelte";
 import { inDesktopApp } from "./cave";
+import { aiPanel } from "./ai/panel.svelte";
 
 export interface Command {
 	id: string;
@@ -29,6 +30,7 @@ export const COMMANDS: Command[] = [
 	{ id: "search", label: "Search all notes", icon: "search", keys: "Ctrl+Shift+F", run: () => showPanel("search") },
 	{ id: "tags", label: "Browse tags", icon: "tag", keys: "Ctrl+Shift+T", run: () => showPanel("tags") },
 	{ id: "switcher", label: "Open a note", icon: "file", keys: "Ctrl+O", run: () => (ws.modal = "switcher") },
+	{ id: "ai", label: "Ask the AI", icon: "sparkles", keys: "Ctrl+J", run: () => (aiPanel.open = !aiPanel.open) },
 	{ id: "new-note", label: "New note", icon: "pencil", keys: "Ctrl+N", run: () => ws.newNote() },
 	{ id: "new-board", label: "New board", icon: "board", keys: "Ctrl+Shift+B", run: () => ws.newBoard() },
 	{ id: "new-folder", label: "New folder", icon: "folderPlus", run: () => ws.newFolder() },

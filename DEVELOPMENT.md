@@ -51,6 +51,17 @@ check again before a public launch.
   search. `src/lib/board.ts`: boards (Markdown with `basalt: board`).
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
+- `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
+  puts to sleep the engine (llama.cpp's llama-server, managed by
+  `src-tauri/src/ai.rs`: downloads, start/stop, streaming chats, all on
+  127.0.0.1). `models.ts` is the model list and "recommended for your PC".
+  `tools.ts` is everything the AI can do: looking around runs straight away,
+  changes become a plan the user approves, each with its own undo.
+  `agent.svelte.ts` runs the conversation and the memory note
+  (`.basalt/ai/memory.md` in the cave, hidden from the sidebar).
+  The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
+  `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
+  lets you try it without the desktop app.
 - `src/lib/updates.svelte.ts` and `ui/UpdateNotice.svelte`: the desktop app
   asks GitHub for the latest release now and then and offers a one-click
   download (opened with the opener plugin).
@@ -141,6 +152,7 @@ Version 0.1.0 plus, so far:
 
 ## Next steps
 
-1. G. Click-to-customize: click any part of the app to style it.
+1. AI step 2: writing help in the editor. Step 3: the mic button.
+2. G. Click-to-customize: click any part of the app to style it.
 2. A local AI helper (Ollama) that can read and suggest edits you approve.
 3. Custom title bar, backlinks, split panes, daily notes, graph view.

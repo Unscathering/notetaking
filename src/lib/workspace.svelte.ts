@@ -35,6 +35,8 @@ class Workspace {
 	saving = $state(false);
 	/** A line to scroll to once a note is open (from search results). */
 	reveal: { path: string; line: number } | null = $state(null);
+	/** The latest change made to a note from outside the editor (for example by the AI). */
+	outside: { path: string; text: string; n: number } | null = $state(null);
 	/** Every note's details, kept up to date as notes change. */
 	props = $derived.by(() => {
 		const out = new Map<string, NoteProps>();
@@ -175,6 +177,15 @@ class Workspace {
 				this.saving = this.timers.size > 0;
 			}, 400)
 		);
+	}
+
+	/** Replaces a note's whole text from outside the editor, and saves it. */
+	async writeNote(path: string, text: string) {
+		if (!this.cave) return;
+		await this.cave.write(path, text);
+		this.texts.set(path, text);
+		this.outside = { path, text, n: (this.outside?.n ?? 0) + 1 };
+		if (!this.files.includes(path)) await this.refresh();
 	}
 
 	/** Finds a note by a link's name ("Plan", "Projects/Plan" or "Plan.md"). */

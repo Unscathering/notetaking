@@ -67,6 +67,15 @@
 		view.focus();
 	});
 
+	// A note changed from outside (for example by the AI): show the new text,
+	// keeping undo so Ctrl+Z still brings the old text back.
+	$effect(() => {
+		const o = ws.outside;
+		if (!o || !view) return;
+		if (o.path !== shown) return void states.delete(o.path);
+		if (view.state.doc.toString() !== o.text) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: o.text } });
+	});
+
 	// Spell check follows the writing setting.
 	$effect(() => {
 		const on = writing.spellcheck;

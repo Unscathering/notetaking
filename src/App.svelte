@@ -11,6 +11,8 @@
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import BoardView from "./lib/ui/BoardView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
+	import AiPanel from "./lib/ui/ai/AiPanel.svelte";
+	import { aiPanel } from "./lib/ai/panel.svelte";
 	import { startUpdateChecks } from "./lib/updates.svelte";
 	import { isBoardText } from "./lib/board";
 	import { icon } from "./lib/ui/icons";
@@ -95,7 +97,7 @@
 	</filter>
 </svg>
 
-<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus}>
+<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus} class:ai-open={aiPanel.open}>
 	<Ribbon />
 	<aside class="sidebar">
 		<Sidebar {ms} />
@@ -145,6 +147,9 @@
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>
 	</main>
+	<div class="ai-col">
+		{#if aiPanel.open}<AiPanel {ms} />{/if}
+	</div>
 </div>
 
 <ContextMenu {ms} />
@@ -190,7 +195,7 @@
 		position: relative;
 		z-index: 1;
 		display: grid;
-		grid-template-columns: 48px var(--sidebar-width) 1fr;
+		grid-template-columns: 48px var(--sidebar-width) minmax(0, 1fr) 0px;
 		grid-template-rows: minmax(0, 1fr);
 		height: 100vh;
 		padding: var(--float-gap);
@@ -217,11 +222,30 @@
 		margin-right: 0;
 	}
 	.app.sidebar-closed {
-		grid-template-columns: 48px 0px 1fr;
+		grid-template-columns: 48px 0px minmax(0, 1fr) 0px;
+	}
+	.app.ai-open {
+		grid-template-columns: 48px var(--sidebar-width) minmax(0, 1fr) 380px;
+	}
+	.app.ai-open.sidebar-closed {
+		grid-template-columns: 48px 0px minmax(0, 1fr) 380px;
+	}
+	.ai-col {
+		min-width: 0;
+		min-height: 0;
+		overflow: hidden;
+		transition: margin var(--dur) var(--ease);
+	}
+	.ai-open .ai-col {
+		margin-left: var(--float-gap);
+	}
+	.is-focus .ai-col {
+		margin-left: 0;
 	}
 	/* Focus mode: everything but the text slides away. */
-	.app.is-focus {
-		grid-template-columns: 0px 0px 1fr;
+	.app.is-focus,
+	.app.is-focus.ai-open {
+		grid-template-columns: 0px 0px minmax(0, 1fr) 0px;
 	}
 	.app > :global(.ribbon),
 	.tabbar,

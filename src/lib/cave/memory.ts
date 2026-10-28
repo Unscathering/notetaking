@@ -45,13 +45,14 @@ export class MemoryCave implements Cave {
 	}
 
 	async list() {
-		return [...this.files.keys()].filter(isNote);
+		// Like a real folder, anything inside a dot-folder (such as .basalt) stays hidden.
+		return [...this.files.keys()].filter((p) => isNote(p) && !p.split("/").some((part) => part.startsWith(".")));
 	}
 
 	async listFolders() {
 		const all = new Set(this.folders);
 		for (const p of this.files.keys()) for (let f = parentOf(p); f; f = parentOf(f)) all.add(f);
-		return [...all];
+		return [...all].filter((f) => !f.split("/").some((part) => part.startsWith(".")));
 	}
 
 	async read(path: string) {
