@@ -24,7 +24,7 @@ export const VIEWS: Record<string, { label: string; icon: IconName }> = {
 };
 export const isView = (path: string) => path.startsWith("basalt:");
 
-export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups";
+export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups" | "history";
 
 class Workspace {
 	cave: Cave | null = $state(null);
@@ -39,6 +39,14 @@ class Workspace {
 	note = $derived(this.active && !isView(this.active) ? this.active : null);
 	/** The last note that was in front, even if a view is showing now. */
 	recent: string | null = $state(null);
+	/** The note whose history is showing. */
+	historyOf: string | null = $state(null);
+
+	showHistory(path: string | null) {
+		if (!path) return;
+		this.historyOf = path;
+		this.modal = "history";
+	}
 	texts = new SvelteMap<string, string>();
 	openFolders = new SvelteSet<string>();
 	panel: Panel = $state("files");
@@ -68,6 +76,12 @@ class Workspace {
 	/** The sidebar item being renamed in place. */
 	renaming: string | null = $state(null);
 	private timers = new Map<string, number>();
+	/** Others listening in, like note history: saved text, text about to be replaced, renames. */
+	hooks = {
+		saved: [] as Array<(path: string, text: string) => void>,
+		replacing: [] as Array<(path: string, old: string) => void>,
+		renamed: [] as Array<(from: string, to: string) => void>,
+	};
 
 	/** Notes in sidebar order. */
 	notes = $derived.by(() => {
@@ -188,7 +202,16 @@ class Workspace {
 		this.saving = false;
 	}
 
+	/** Notes edited since the cave opened. */
+	private touched = new Set<string>();
+
 	edited(path: string, text: string) {
+		// The first edit keeps a copy of how the note was before (for note history).
+		const before = this.texts.get(path);
+		if (!this.touched.has(path) && before != null && before !== text) {
+			this.touched.add(path);
+			for (const h of this.hooks.replacing) h(path, before);
+		}
 		this.texts.set(path, text);
 		this.saving = true;
 		window.clearTimeout(this.timers.get(path));
@@ -196,6 +219,7 @@ class Workspace {
 			path,
 			window.setTimeout(async () => {
 				await this.cave?.write(path, text);
+				for (const h of this.hooks.saved) h(path, text);
 				this.timers.delete(path);
 				this.saving = this.timers.size > 0;
 			}, 400)
@@ -205,7 +229,10 @@ class Workspace {
 	/** Replaces a note's whole text from outside the editor, and saves it. */
 	async writeNote(path: string, text: string) {
 		if (!this.cave) return;
+		const old = this.texts.get(path);
+		if (old != null && old !== text) for (const h of this.hooks.replacing) h(path, old);
 		await this.cave.write(path, text);
+		for (const h of this.hooks.saved) h(path, text);
 		this.texts.set(path, text);
 		this.outside = { path, text, n: (this.outside?.n ?? 0) + 1 };
 		if (!this.files.includes(path)) await this.refresh();
@@ -320,6 +347,7 @@ class Workspace {
 
 	/** Keeps tabs, texts, looks and the home note pointing at a moved path. */
 	private renamed(from: string, to: string) {
+		for (const h of this.hooks.renamed) h(from, to);
 		const swap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
 		this.tabs = this.tabs.map(swap);
 		if (this.active) this.active = swap(this.active);

@@ -37,7 +37,7 @@ export const backups = $state({ list: [] as Backup[], busy: false, last: 0 });
 // ---- Where they're kept ----
 
 /** A short, steady name for the cave's backup folder. */
-function caveKey(id: string, name: string) {
+export function caveKey(id: string, name: string) {
 	let h = 0;
 	for (const ch of id) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
 	return `${name.replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 40) || "cave"}-${h.toString(36)}`;

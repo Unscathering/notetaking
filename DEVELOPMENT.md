@@ -66,6 +66,11 @@ check again before a public launch.
   the physics; `ui/GraphView.svelte` draws it on a canvas (folder colors,
   hover glow, drag, zoom, a camera that follows until you take over, filters,
   forces and a "near this note" mode). The layout is kept between visits.
+- `src/lib/history.svelte.ts` and `ui/NoteHistory.svelte`: each note's earlier
+  versions (kept outside the cave like backups), saved through `ws.hooks`
+  (`saved`, `replacing`, `renamed`): one every five minutes while typing, and
+  pinned copies before anything else replaces a note. The window compares a
+  version with now, line by line, and restores it.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

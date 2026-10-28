@@ -13,6 +13,8 @@
 	import GraphView from "./lib/ui/GraphView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
+	import NoteHistory from "./lib/ui/NoteHistory.svelte";
+	import { startHistory } from "./lib/history.svelte";
 	import { startBackups } from "./lib/backups.svelte";
 	import AiPanel from "./lib/ui/ai/AiPanel.svelte";
 	import { aiPanel } from "./lib/ai/panel.svelte";
@@ -50,10 +52,11 @@
 	});
 	let shown: string | null = null;
 
-	// Backups of each cave, from the moment it opens.
+	// Backups of each cave, from the moment it opens, and each note's history.
 	$effect(() => {
 		if (ws.cave?.id) startBackups();
 	});
+	startHistory();
 
 	// A soft fade and lift whenever another note comes to the front.
 	$effect(() => {
@@ -175,6 +178,8 @@
 	<CaveSwitcher {ms} />
 {:else if ws.modal === "backups"}
 	<Backups {ms} />
+{:else if ws.modal === "history" && ws.historyOf}
+	<NoteHistory {ms} path={ws.historyOf} />
 {/if}
 
 <style>

@@ -105,6 +105,7 @@
 						{ label: "Open", icon: "file", run: () => ws.open(entry.path) },
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
 						{ label: "Make this the home page", icon: "home", run: () => ws.setHome(entry.path) },
+						{ label: "History", icon: "clock", run: () => ws.showHistory(entry.path) },
 						{ label: "-" },
 						...looks,
 						{ label: "-" },
