@@ -59,6 +59,13 @@ check again before a public launch.
   cave opens, every half hour if something changed, and before the AI applies
   a plan; the newest 20 and one a day for two weeks are kept. Restoring makes
   a backup first; `ws.reloaded` tells the editor to reload every note.
+- Views: tabs whose path starts with `basalt:` aren't notes (`VIEWS` and
+  `isView` in `workspace.svelte.ts`; `ws.note` is the note in front, if any,
+  and `ws.recent` the last one). `basalt:graph` is the graph:
+  `src/lib/graph.ts` builds it (links, tags, notes not written yet) and runs
+  the physics; `ui/GraphView.svelte` draws it on a canvas (folder colors,
+  hover glow, drag, zoom, a camera that follows until you take over, filters,
+  forces and a "near this note" mode). The layout is kept between visits.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

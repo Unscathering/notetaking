@@ -1,5 +1,6 @@
 // The app's shared state: the open cave, its notes, tabs and panels, and every
 // action that changes them. Components read from `ws` and call its methods.
+import type { IconName } from "./ui/icons";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import {
 	baseName,
@@ -17,6 +18,12 @@ import { readProps, type NoteProps } from "./notes";
 import { newBoardText } from "./board";
 
 export type Panel = "files" | "search" | "tags";
+/** Tabs that aren't notes: the graph and other whole-cave views. */
+export const VIEWS: Record<string, { label: string; icon: IconName }> = {
+	"basalt:graph": { label: "Graph", icon: "graph" },
+};
+export const isView = (path: string) => path.startsWith("basalt:");
+
 export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups";
 
 class Workspace {
@@ -26,7 +33,12 @@ class Workspace {
 	folders: string[] = $state([]);
 	tree = $derived(buildTree(this.files, this.folders, this.meta));
 	tabs: string[] = $state([]);
+	/** The tab in front: a note's path, or a view like "basalt:graph". */
 	active: string | null = $state(null);
+	/** The note in front, or null when a view (graph, calendar) is showing. */
+	note = $derived(this.active && !isView(this.active) ? this.active : null);
+	/** The last note that was in front, even if a view is showing now. */
+	recent: string | null = $state(null);
 	texts = new SvelteMap<string, string>();
 	openFolders = new SvelteSet<string>();
 	panel: Panel = $state("files");
@@ -145,12 +157,14 @@ class Workspace {
 
 	async open(path: string) {
 		if (!this.cave) return;
-		if (!this.texts.has(path)) this.texts.set(path, await this.cave.read(path));
+		if (!isView(path) && !this.texts.has(path)) this.texts.set(path, await this.cave.read(path));
 		if (!this.tabs.includes(path)) {
 			const at = this.active ? this.tabs.indexOf(this.active) + 1 : this.tabs.length;
 			this.tabs = [...this.tabs.slice(0, at), path, ...this.tabs.slice(at)];
 		}
 		this.active = path;
+		if (isView(path)) return;
+		this.recent = path;
 		// Show where the note lives in the sidebar.
 		for (let f = parentOf(path); f; f = parentOf(f)) this.openFolders.add(f);
 	}

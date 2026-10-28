@@ -43,6 +43,7 @@ const PATHS = {
 	users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
 	check: '<path d="M20 6 9 17l-5-5"/>',
 	clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+	graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="5" r="2"/><circle cx="12" cy="13" r="3"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2.5"/><path d="m7.2 7.4 2.6 3.6M17.4 6.3l-3.6 4.6M10 15l-2.6 2.5M14.5 14.7l2 2.4"/>',
 	alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
 	grip: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
 	image: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',

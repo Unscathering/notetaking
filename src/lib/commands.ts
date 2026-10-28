@@ -61,7 +61,8 @@ export const COMMANDS: Command[] = [
 	{ id: "typewriter", label: "Typewriter scrolling", icon: "type", run: () => (writing.typewriter = !writing.typewriter) },
 	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
 	{ id: "close-tab", label: "Close tab", icon: "x", keys: "Ctrl+W", run: () => ws.active && ws.closeTab(ws.active) },
-	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.active && ws.setHome(ws.active) },
+	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.note && ws.setHome(ws.note) },
+	{ id: "graph", label: "Open the graph", icon: "graph", run: () => ws.open("basalt:graph") },
 	{
 		id: "updates",
 		label: "Check for updates",

@@ -202,7 +202,7 @@ export async function restoreAll(id: string) {
 		ws.texts.clear();
 		for (const [path, text] of Object.entries(snap.files)) ws.texts.set(path, text);
 		await ws.refresh();
-		for (const t of [...ws.tabs]) if (!ws.files.includes(t)) ws.closeTab(t);
+		for (const t of [...ws.tabs]) if (!t.startsWith("basalt:") && !ws.files.includes(t)) ws.closeTab(t);
 		ws.reloaded++;
 	} finally {
 		backups.busy = false;

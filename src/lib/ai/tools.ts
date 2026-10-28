@@ -394,7 +394,7 @@ function changeAppearance(a: Args) {
 
 /** A little context about where the user is, for the AI. */
 export function context(): string {
-	const open = ws.active;
+	const open = ws.note;
 	const props = open ? readProps(ws.texts.get(open) ?? "") : null;
 	return [
 		`Cave: ${ws.cave?.name ?? "none"} (${ws.files.length} notes, ${ws.folders.length} folders).`,

@@ -135,7 +135,7 @@ export function templates(): Array<{ name: string; path?: string; text: () => st
 export async function fromTemplate(name: string) {
 	const t = templates().find((x) => x.name === name);
 	if (!t || !ws.cave) return;
-	const open = ws.active;
+	const open = ws.note;
 	const folder = open && !open.startsWith(`${TEMPLATE_FOLDER}/`) ? open.split("/").slice(0, -1).join("/") : "";
 	const title = name === "Daily note" ? dateName(new Date()) : `New ${name.toLowerCase()}`;
 	const path = await ws.cave.create(folder, title, fill(t.path ? await ws.cave.read(t.path) : t.text(), title));

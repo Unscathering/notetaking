@@ -10,6 +10,7 @@
 	import Settings from "./lib/ui/Settings.svelte";
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import BoardView from "./lib/ui/BoardView.svelte";
+	import GraphView from "./lib/ui/GraphView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import { startBackups } from "./lib/backups.svelte";
@@ -22,7 +23,7 @@
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
 	import { noteTitle, pickCave } from "./lib/cave";
-	import { startWorkspace, ws } from "./lib/workspace.svelte";
+	import { VIEWS, startWorkspace, ws } from "./lib/workspace.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
 	import { mediaUrl } from "./lib/theme/media.svelte";
 
@@ -33,7 +34,7 @@
 	const ms = $derived(motionMs(theme));
 	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
 	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));
-	const words = $derived(ws.active ? (ws.texts.get(ws.active) ?? "").split(/\s+/).filter(Boolean).length : 0);
+	const words = $derived(ws.note ? (ws.texts.get(ws.note) ?? "").split(/\s+/).filter(Boolean).length : 0);
 
 	let editorHost: HTMLElement | undefined = $state();
 	let video: HTMLVideoElement | undefined = $state();
@@ -116,7 +117,7 @@
 				{#each ws.tabs as path (path)}
 					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={ws.active === path}>
 						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
-							{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}
+							{#if VIEWS[path]}<span class="tab-ico">{@html icon(VIEWS[path].icon, 13)}</span>{VIEWS[path].label}{:else}{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}{/if}
 						</button>
 						<button class="tab-close" onclick={() => ws.closeTab(path)} title="Close (Ctrl+W)">{@html icon("x", 14)}</button>
 					</div>
@@ -131,6 +132,8 @@
 					<p>Your notes live in caves: plain Markdown files in a folder you choose.</p>
 					<button class="primary" onclick={chooseCave}>Choose a folder for your first cave</button>
 				</div>
+			{:else if ws.active === "basalt:graph"}
+				<GraphView {ms} />
 			{:else if ws.active && showingBoard}
 				<BoardView path={ws.active} {ms} />
 			{:else if ws.active}
