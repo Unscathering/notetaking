@@ -56,15 +56,22 @@ check again before a public launch.
   `src-tauri/src/ai.rs`: downloads, start/stop, streaming chats, all on
   127.0.0.1). `models.ts` is the model list and "recommended for your PC".
   `tools.ts` is everything the AI can do: looking around runs straight away,
-  changes become a plan the user approves, each with its own undo.
-  `agent.svelte.ts` runs the conversation and the memory note
+  changes become a plan the user approves, each with its own undo. `check`
+  turns down changes that can't work (blank or made-up names) before they
+  reach the plan, and the look tools are only offered when the user asks
+  about the look. `agent.svelte.ts` runs the conversation (live steps the
+  user can open, no repeated calls, at most two memories a message, older
+  messages trimmed to fit the engine's `CONTEXT`) and the memory note
   (`.basalt/ai/memory.md` in the cave, hidden from the sidebar).
   The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
   `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
   lets you try it without the desktop app.
 - `src/lib/updates.svelte.ts` and `ui/UpdateNotice.svelte`: the desktop app
-  asks GitHub for the latest release now and then and offers a one-click
-  download (opened with the opener plugin).
+  asks GitHub for the latest release now and then and offers "Update now":
+  `src-tauri/src/update.rs` downloads the installer, runs it on its own
+  (`/P /R`) and closes Basalt, which reopens updated. The AI engine and
+  models live in the app data folder, so updates keep them. Downloads (in
+  `ai.rs`) come in 8 pieces at once and pick up where a piece stopped.
 - `src/lib/editor/`: CodeMirror. `setup.ts` puts it together and holds the
   editor's look (all from theme variables). `livePreview.ts` hides Markdown
   symbols on lines you are not editing (headings, bold, links, quotes,
@@ -91,7 +98,9 @@ check again before a public launch.
   (`demo.ts`) are in `ui/settings/`. `SidebarPage.svelte` and
   `TreePreview.svelte` hold the folder-list choices (`theme.sidebar`).
 - `src-tauri/`: the desktop shell (Rust). `capabilities/default.json` lists
-  what the window may do (folder picker; read and write files).
+  what the window may do (folder picker; read and write files). The window's
+  own drag-and-drop is off (`dragDropEnabled`), so the page gets drags (moving
+  notes into folders, dropping pictures).
 
 ## Running and testing
 

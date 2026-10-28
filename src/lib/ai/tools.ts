@@ -78,7 +78,8 @@ export const TOOLS = [
 	fn("add_card", "Propose adding a card to a list on a board.", { board: s("The board note."), list: s("The list's name."), title: s("Card title."), description: s("Optional."), color: s("Optional color name."), due: s("Optional YYYY-MM-DD.") }, ["board", "list", "title"]),
 	fn("move_item", "Propose moving a note or folder into another folder ('' for the top level).", { path: s("What to move."), to_folder: s("Where to.") }, ["path", "to_folder"]),
 	fn("rename_item", "Propose renaming a note or folder.", { path: s("What to rename."), new_name: s("The new name only, not a path.") }, ["path", "new_name"]),
-	fn("delete_item", "Propose deleting a note or folder (and everything in it). Only when the user clearly asks.", { path: s("What to delete.") }, ["path"]),
+	fn("delete_item", "Propose deleting one note or folder (and everything in it). Only when the user clearly asks. Use clear_cave to delete everything.", { path: s("The exact name of what to delete, from list_cave.") }, ["path"]),
+	fn("clear_cave", "Propose deleting every note and folder in the cave, to start fresh. Only when the user clearly asks to wipe, clear or delete everything."),
 	fn("set_look", "Propose giving a folder or note a color and/or icon in the sidebar.", { path: s("The folder or note."), color: s("Color name or #hex, or 'none'."), icon: s(`One of ${FOLDER_ICONS.join(", ")}, one emoji, or 'none'.`) }, ["path"]),
 	fn("set_home", "Propose making a note the cave's home page.", { path: s("The note.") }, ["path"]),
 	fn(
@@ -86,10 +87,16 @@ export const TOOLS = [
 		"Propose changing how the app looks. Give only what should change. Call get_appearance first to see the choices.",
 		{ theme: s("A theme name, applied first."), accent: s("Accent color, #hex or a color name."), material: s("solid, transparent, glass, frosted or liquid."), wallpaper: s("A wallpaper name, or 'none'."), heading_style: s("plain, underline, bar, accent, gradient or caps."), note_font: s("A font name."), sidebar_style: s("A sidebar style name."), corners: n("Corner rounding in pixels, 0 to 24."), text_size: n("Note text size in pixels, 12 to 26.") }
 	),
-	fn("remember", "Save something worth remembering about the user (likes, projects, how they like to work) to your memory note. Happens straight away.", { fact: s("One short sentence.") }, ["fact"]),
+	fn("remember", "Save one new, lasting fact about the person (their likes, projects, how they like to work) to your memory note. Not about the cave, its notes or folders, and never something already in your memory. At most once or twice per message.", { fact: s("One short sentence about the person.") }, ["fact"]),
 ];
 
-export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "set_look", "set_home", "change_appearance"]);
+export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "change_appearance"]);
+
+const LOOKS_TOOLS = new Set(["get_appearance", "change_appearance"]);
+const LOOKS_WORDS = /\b(theme|look|looks|appearance|colou?r|dark|light|font|wallpaper|background|glass|frosted|accent|corner|style|pretty|aesthetic|design)\b/i;
+
+/** The tools for this message: the app's look only comes up when the user asks about it. */
+export const toolsFor = (said: string) => TOOLS.filter((t) => !LOOKS_TOOLS.has(t.function.name) || LOOKS_WORDS.test(said));
 
 // ---- Looking around ----
 
@@ -141,6 +148,42 @@ export function look(tool: string, a: Args): string {
 	return "Unknown tool.";
 }
 
+/**
+ * Checks a proposed change before it goes into the plan. Returns what's wrong
+ * (sent back to the AI so it can fix it), or "" if it's fine. `planned` is the
+ * plan so far, so a change may use a folder or note made earlier in the plan.
+ */
+export function check(tool: string, a: Args, planned: Change[]): string {
+	const made = (p: string) => planned.some((c) => ["create_folder", "create_note", "create_board"].includes(c.tool) && [folderPath(c.args.path), notePath(c.args.path)].some((x) => x.toLowerCase() === p.toLowerCase()));
+	// Once the plan clears the cave, only what the plan makes is left.
+	const cleared = planned.some((c) => c.tool === "clear_cave");
+	const there = (v: unknown) => !cleared && (!!findNote(v) || isFolder(folderPath(v)));
+	const exists = (v: unknown) => there(v) || made(folderPath(v)) || made(notePath(v));
+	const missing = (v: unknown) => `There's nothing called "${str(v)}". Use list_cave to see the real names, and only use those.`;
+	const p = str(a.path);
+	if (tool === "clear_cave") return cleared ? "That's already in the plan." : ws.files.length || ws.folders.length ? "" : "The cave is already empty.";
+	if (tool === "change_appearance") return Object.keys(a).length ? "" : "Say what to change.";
+	if (tool === "add_card") return !str(a.board) ? "Name the board." : exists(a.board) ? (str(a.title) ? "" : "Give the card a title.") : missing(a.board);
+	if (!p) return "The path is empty. Give the name of the note or folder.";
+	if (/[*?"<>|]/.test(p)) return `"${p}" has characters a file name can't have.`;
+	if (planned.some((c) => c.tool === tool && JSON.stringify(c.args) === JSON.stringify(a))) return "That's already in the plan. Don't repeat it.";
+	switch (tool) {
+		case "create_folder":
+			return there(p) && !a.color && !a.icon ? `The folder "${p}" already exists.` : "";
+		case "create_note":
+		case "create_board":
+			return !cleared && ws.files.includes(notePath(p)) ? `"${p}" already exists. Use edit_note to change it.` : made(notePath(p)) ? `"${p}" is already in the plan.` : "";
+		case "move_item":
+			return exists(p) ? "" : missing(p);
+		case "rename_item":
+			return !exists(p) ? missing(p) : str(a.new_name) ? "" : "Give the new name.";
+		case "set_home":
+			return (!cleared && findNote(p)) || made(notePath(p)) ? "" : `There's no note called "${p}". Make it first (create_note), or pick a note from list_cave.`;
+		default:
+			return exists(p) ? "" : missing(p);
+	}
+}
+
 /** What a proposed change does, in plain words, and its icon. */
 export function describe(tool: string, a: Args): { summary: string; icon: IconName } {
 	const p = str(a.path);
@@ -163,6 +206,8 @@ export function describe(tool: string, a: Args): { summary: string; icon: IconNa
 			return { summary: `Rename “${p}” to “${str(a.new_name)}”`, icon: "pencil" };
 		case "delete_item":
 			return { summary: `Delete “${p}”`, icon: "trash" };
+		case "clear_cave":
+			return { summary: "Delete every note and folder in the cave", icon: "trash" };
 		case "set_look":
 			return { summary: `Give “${p}” ${[str(a.color) && `the color ${str(a.color)}`, str(a.icon) && `the icon ${str(a.icon)}`].filter(Boolean).join(" and ") || "no look"}`, icon: "palette" };
 		case "set_home":
@@ -260,15 +305,23 @@ export async function apply(c: Change): Promise<Undo> {
 			const path = findNote(a.path) ?? folderPath(a.path);
 			if (!ws.files.includes(path) && !isFolder(path)) throw new Error(`There's nothing called “${str(a.path)}”.`);
 			// Keep a copy of everything, so undo can put it back.
-			const files = ws.files.filter((f) => f === path || f.startsWith(`${path}/`)).map((f) => [f, ws.texts.get(f) ?? ""] as const);
-			const folders = ws.folders.filter((f) => f === path || f.startsWith(`${path}/`));
-			const looks = Object.entries(ws.meta.looks).filter(([p]) => p === path || p.startsWith(`${path}/`));
+			const inside = (f: string) => f === path || f.startsWith(`${path}/`);
+			const back = await snapshot(inside);
 			await ws.remove(path);
+			return back;
+		}
+		case "clear_cave": {
+			// Pictures (in attachments) stay, since undo can only bring back text.
+			const top = ws.tree.filter((e) => e.name !== "attachments").map((e) => e.path);
+			const back = await snapshot((f) => top.some((t) => f === t || f.startsWith(`${t}/`)));
+			for (const t of top) await ws.remove(t);
+			const home = ws.meta.home;
+			ws.meta.home = undefined;
+			await ws.saveMeta();
 			return async () => {
-				for (const f of folders) await cave.mkdir(f);
-				for (const [f, text] of files) await cave.write(f, text);
-				await ws.refresh();
-				for (const [p, l] of looks) await ws.setLook(p, l);
+				await back();
+				ws.meta.home = home;
+				await ws.saveMeta();
 			};
 		}
 		case "set_look": {
@@ -297,6 +350,21 @@ export async function apply(c: Change): Promise<Undo> {
 		}
 	}
 	throw new Error("Basalt doesn't know how to do that yet.");
+}
+
+/** Copies the notes, folders and looks that match, and returns how to put them back. */
+async function snapshot(match: (path: string) => boolean): Promise<Undo> {
+	const cave = ws.cave!;
+	const files: Array<[string, string]> = [];
+	for (const f of ws.files.filter(match)) files.push([f, ws.texts.get(f) ?? (await cave.read(f))]);
+	const folders = ws.folders.filter(match);
+	const looks = Object.entries(ws.meta.looks).filter(([p]) => match(p));
+	return async () => {
+		for (const f of folders) await cave.mkdir(f);
+		for (const [f, text] of files) await cave.write(f, text);
+		await ws.refresh();
+		for (const [p, l] of looks) await ws.setLook(p, l);
+	};
 }
 
 function changeAppearance(a: Args) {

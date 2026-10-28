@@ -158,6 +158,9 @@ export async function stop() {
 	ai.running = false;
 }
 
+/** How much text, in tokens, the AI can keep in mind at once. */
+export const CONTEXT = 16384;
+
 /** Wakes the engine up if it's asleep. */
 export async function wake() {
 	if (devUrl()) ai.running = true;
@@ -171,11 +174,11 @@ export async function wake() {
 		const layers = gpuLayers(choice, ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
 		const hw = ai.hardware;
 		try {
-			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: 12288, device: hw?.device && hw.vramMb ? hw.device : null });
+			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: CONTEXT, device: hw?.device && hw.vramMb ? hw.device : null });
 		} catch (e) {
 			// Older engines don't know how to pick a card; try once without.
 			if (!hw?.device) throw e;
-			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: 12288, device: null });
+			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: CONTEXT, device: null });
 		}
 		ai.running = true;
 		rest();

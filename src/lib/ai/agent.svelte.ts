@@ -8,11 +8,16 @@
 // AI read it. After a few messages, and when a chat ends, the AI updates it
 // with what it learned and a line about the conversation.
 import { ws } from "../workspace.svelte";
-import { stream } from "./engine.svelte";
-import { TOOLS, WRITES, apply, context, describe, look, type Change } from "./tools";
+import type { IconName } from "../ui/icons";
+import { CONTEXT, stream } from "./engine.svelte";
+import { WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
 
 export const MEMORY_PATH = ".basalt/ai/memory.md";
 const MAX_ROUNDS = 10;
+/** New memory notes allowed per message. */
+const MAX_MEMORIES = 2;
+/** Room kept for the AI's answer, in tokens. */
+const ANSWER_ROOM = 2048;
 
 interface ApiMessage {
 	role: "system" | "user" | "assistant" | "tool";
@@ -28,12 +33,20 @@ export interface Plan {
 	note?: string;
 }
 
+/** One thing the AI did while working, like "Read “Garden plan”". The arrow shows `detail`. */
+export interface Step {
+	icon: IconName;
+	label: string;
+	detail?: string;
+	/** Still happening. */
+	active?: boolean;
+}
+
 export interface ChatMessage {
 	id: number;
 	role: "user" | "assistant";
 	text: string;
-	/** Short notes about what the AI looked at, like "Read Garden plan". */
-	activity: string[];
+	steps: Step[];
 	plan?: Plan;
 	error?: string;
 	streaming?: boolean;
@@ -42,6 +55,8 @@ export interface ChatMessage {
 let nextId = 1;
 let history: ApiMessage[] = [];
 let sinceMemory = 0;
+/** Where the current message starts in `history`. */
+let turnStart = 0;
 
 export const chat = $state({
 	messages: [] as ChatMessage[],
@@ -54,9 +69,28 @@ export const chat = $state({
 
 export async function loadMemory() {
 	if (!ws.cave) return "";
-	chat.memory = (await ws.cave.exists(MEMORY_PATH)) ? await ws.cave.read(MEMORY_PATH) : "";
+	const text = (await ws.cave.exists(MEMORY_PATH)) ? await ws.cave.read(MEMORY_PATH) : "";
+	chat.memory = tidy(text);
 	chat.memoryLoaded = true;
+	if (chat.memory !== text) await ws.cave.write(MEMORY_PATH, chat.memory);
 	return chat.memory;
+}
+
+const same = (a: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+/** Notes about the cave itself, which the AI can see anyway. */
+const aboutCave = (fact: string) => /\b(the user'?s|their|your) (cave|notes?|folders?|boards?|home ?page)\b/i.test(fact);
+
+/** Drops repeated lines and notes about the cave (an older version could fill the note with them). */
+function tidy(text: string) {
+	const seen = new Set<string>();
+	const lines = text.split("\n").filter((line) => {
+		if (!line.startsWith("- ")) return true;
+		const key = same(line);
+		if (seen.has(key) || aboutCave(line)) return false;
+		seen.add(key);
+		return true;
+	});
+	return lines.join("\n");
 }
 
 export async function saveMemory(text: string) {
@@ -64,11 +98,16 @@ export async function saveMemory(text: string) {
 	await ws.cave?.write(MEMORY_PATH, text);
 }
 
-async function remember(fact: string) {
+/** Saves a fact, unless it's already known or is about the cave. Returns what the AI is told. */
+async function remember(fact: string): Promise<string> {
+	if (!fact.trim()) return "Nothing to save.";
+	if (aboutCave(fact)) return "Not saved: only remember things about the person, not their cave.";
 	const now = chat.memory || (await loadMemory());
+	if (now.split("\n").some((l) => same(l) === same(fact) || (same(fact).length > 12 && same(l).includes(same(fact))))) return "You already remember that.";
 	const lines = now.trim() ? now.trimEnd().split("\n") : ["# What I know about you", ""];
-	lines.push(`- ${fact}`);
+	lines.push(`- ${fact.trim()}`);
 	await saveMemory(`${lines.join("\n")}\n`);
+	return "Saved to your memory.";
 }
 
 /** Asks the AI to fold the conversation into its memory note. Runs quietly. */
@@ -111,19 +150,61 @@ How Basalt works:
 - The app's look (theme, colors, glass, wallpaper, fonts) can be changed with change_appearance.
 
 How you work:
-- Use list_cave, read_note, search_notes, list_tags and get_appearance freely to understand things before answering. Don't guess what's in a note: read it.
-- Every change (making, editing, moving, renaming, deleting, looks, appearance) is only proposed. The user sees all your proposed changes as one plan and approves them. So never say you "did" something: say what you've planned, and that they can approve it below.
-- For big or open-ended requests (like "set up my cave" or "organize everything"), first ask 2 to 4 short questions in a single message, then wait for the answers before planning. Then propose the whole thing at once: folders (with fitting colors and icons), starter notes with useful content, boards, a home page that links to the main notes.
-- Put notes inside the folders you create by using paths like "School/Math/Homework".
-- Only delete things when the user clearly asks.
-- When you learn something lasting about the user (projects, likes, how they want you to talk), save it with remember.
+- Use list_cave, read_note, search_notes and list_tags freely to understand things before answering. Don't guess what's in a note: read it. Use the exact names list_cave shows.
+- Every change (making, editing, moving, renaming, deleting) is only proposed. All your proposed changes appear below your reply as one plan, and the user presses "Do it" once. That plan IS the confirmation: never ask "should I go ahead?", "are you sure?" or "do you want me to?" in the chat. Just propose the changes and say in a sentence or two what the plan does. Never say something is already done.
+- When the user tells you what to do, plan it straight away. Only ask questions first when you truly can't tell what they want (like a vague "set up my cave"); then ask 2 to 4 short questions in one message and wait.
+- To delete everything in the cave, use clear_cave (never delete_item with an empty name). Delete only when the user clearly asks.
+- Put each folder's notes and boards inside that folder, with paths like "Writing/Writing board", never at the top level unless asked.
+- To make a home page, write the note with create_note first (like "Home"), then set_home on it.
+- Change the app's look (theme, colors, fonts) only when the user asks about the look.
+- If a tool says a change won't work, fix it or leave it out. Never repeat a tool call you already made.
+- When you learn something new and lasting about the person (their projects, likes, how they want you to talk), save it with remember: at most twice per message, and never about the cave.
 
 ${context()}
 Today is ${new Date().toDateString()}.
 
 Your memory of this person:
-${memory.trim() || "(Nothing yet. This may be your first conversation.)"}`;
+${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}`;
 }
+
+// ---- Staying inside the AI's limit ----
+// The engine can only keep so much text in mind at once (CONTEXT tokens). Before
+// each request, older messages lose their tool details, then the oldest ones
+// are dropped, so a long chat never goes over.
+
+/** A rough token count: about 3 characters per token, erring on the high side. */
+const tokens = (v: unknown) => Math.ceil(JSON.stringify(v).length / 3);
+
+/** Older messages as plain text: what was said, without the looking around. */
+function plain(list: ApiMessage[]): ApiMessage[] {
+	const out: ApiMessage[] = [];
+	for (const m of list) {
+		if (m.role === "tool" || !m.content.trim()) continue;
+		const last = out.at(-1);
+		if (last?.role === m.role) last.content += `\n\n${m.content}`;
+		else out.push({ role: m.role, content: m.content });
+	}
+	return out;
+}
+
+function fit(sys: string, tools: object[], budget: number): ApiMessage[] {
+	const room = budget - ANSWER_ROOM - tokens(sys) - tokens(tools);
+	let older = plain(history.slice(0, turnStart));
+	let now = history.slice(turnStart).map((m) => ({ ...m }));
+	const size = () => tokens(older) + tokens(now);
+	while (older.length && size() > room) older = older.slice(older[0].role === "user" && older[1]?.role === "assistant" ? 2 : 1);
+	// Still too big: shorten what the tools said this message, oldest first.
+	for (let i = 0; i < now.length && size() > room; i++) {
+		if (now[i].role === "tool" && now[i].content.length > 300) now[i].content = `${now[i].content.slice(0, 300)}… (shortened)`;
+	}
+	if (size() > room) now = now.filter((m, i) => i === 0 || m.role !== "tool" || i > now.length - 4);
+	return [{ role: "system", content: sys }, ...older, ...now];
+}
+
+const tooLong = (e: unknown) => /exceed_context_size|context size|context length|too long/i.test(String(e));
+
+/** A playful word for while the AI is thinking. */
+export const THINKING = ["Pondering", "Mulling it over", "Rummaging", "Noodling", "Brewing ideas", "Puzzling", "Daydreaming", "Scheming", "Connecting dots", "Chewing on it", "Doodling", "Tinkering"];
 
 const say = (m: ChatMessage, patch: Partial<ChatMessage>) => Object.assign(chat.messages.find((x) => x.id === m.id) ?? m, patch);
 
@@ -131,17 +212,31 @@ export async function send(text: string) {
 	if (chat.busy || !text.trim()) return;
 	chat.busy = true;
 	const memory = chat.memoryLoaded ? chat.memory : await loadMemory();
-	chat.messages.push({ id: nextId++, role: "user", text, activity: [] });
+	chat.messages.push({ id: nextId++, role: "user", text, steps: [] });
+	turnStart = history.length;
 	history.push({ role: "user", content: text });
-	chat.messages.push({ id: nextId++, role: "assistant", text: "", activity: [], streaming: true });
+	chat.messages.push({ id: nextId++, role: "assistant", text: "", steps: [], streaming: true });
 	const reply = chat.messages[chat.messages.length - 1];
 	const plan: Change[] = [];
+	const tools = toolsFor(text);
+	const done = new Set<string>();
 	let changeId = 1;
+	let memories = 0;
+	const step = (s: Step) => {
+		reply.steps.push(s);
+		return reply.steps[reply.steps.length - 1];
+	};
+	/** One line that grows as changes are planned, instead of one line each. */
+	let planStep: Step | undefined;
+	let fixStep: Step | undefined;
+	let memoryStep: Step | undefined;
 	try {
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let content = "";
 			const calls: Array<{ id: string; name: string; args: string }> = [];
-			const stopped = await stream({ messages: [{ role: "system", content: system(memory) }, ...history], tools: TOOLS, temperature: 0.5 }, (d) => {
+			// dry_multiplier: the engine's guard against saying the same thing over and over.
+			const ask = (budget: number) =>
+				stream({ messages: fit(system(memory), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8 }, (d) => {
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
 				if (delta.content) {
@@ -156,6 +251,14 @@ export async function send(text: string) {
 					if (t.function?.arguments) calls[i].args += t.function.arguments;
 				}
 			});
+			let stopped: boolean;
+			try {
+				stopped = await ask(CONTEXT);
+			} catch (e) {
+				// Over the limit anyway (the count above is a guess): try again with much less.
+				if (!tooLong(e) || content || calls.length) throw e;
+				stopped = await ask(Math.floor(CONTEXT * 0.6));
+			}
 			const real = calls.filter(Boolean);
 			if (stopped || !real.length) {
 				history.push({ role: "assistant", content });
@@ -163,6 +266,7 @@ export async function send(text: string) {
 			}
 			history.push({ role: "assistant", content, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
 			if (content.trim()) say(reply, { text: `${reply.text}\n\n` });
+			let fresh = 0;
 			for (const call of real) {
 				let args: Record<string, unknown> = {};
 				try {
@@ -171,47 +275,85 @@ export async function send(text: string) {
 					history.push({ role: "tool", tool_call_id: call.id, content: "Those arguments weren't valid JSON. Try again." });
 					continue;
 				}
+				const key = `${call.name} ${JSON.stringify(args)}`;
 				let result: string;
-				if (call.name === "remember") {
-					await remember(String(args.fact ?? ""));
-					reply.activity.push(`Remembered: ${String(args.fact ?? "")}`);
-					result = "Saved to your memory.";
+				/** Turned down, so trying it again later (once fixed) isn't a repeat. */
+				let refused = false;
+				if (done.has(key)) {
+					result = "You already did exactly that. Don't repeat it: answer the user now.";
+				} else if (call.name === "remember") {
+					const fact = String(args.fact ?? "").trim();
+					result = memories >= MAX_MEMORIES ? "That's enough remembering for this message." : await remember(fact);
+					if (result.startsWith("Saved")) {
+						memories++;
+						memoryStep ??= step({ icon: "brain", label: "" });
+						memoryStep.detail = [memoryStep.detail, `• ${fact}`].filter(Boolean).join("\n");
+						memoryStep.label = memories === 1 ? "Remembered something about you" : `Remembered ${memories} things about you`;
+					}
+				} else if (!tools.some((t) => t.function.name === call.name)) {
+					// Made up, or not offered this time (like the look, when the user didn't ask about it).
+					result = call.name === "change_appearance" ? "The user didn't ask about the app's look, so leave it as it is." : `There's no tool called ${call.name}.`;
+					refused = true;
 				} else if (WRITES.has(call.name)) {
-					plan.push({ id: changeId++, tool: call.name, args, checked: true, ...describe(call.name, args) });
-					result = "Added to the plan. The user will approve it after your reply; don't say it's done.";
+					const problem = check(call.name, args, plan);
+					if (problem) {
+						result = `Not added to the plan: ${problem}`;
+						refused = true;
+						fixStep ??= step({ icon: "alert", label: "" });
+						const n = (fixStep.detail?.split("\n").length ?? 0) + 1;
+						fixStep.label = n === 1 ? "Caught a change that wouldn't work" : `Caught ${n} changes that wouldn't work`;
+						fixStep.detail = [fixStep.detail, `• ${describe(call.name, args).summary}: ${problem}`].filter(Boolean).join("\n");
+					} else {
+						const change: Change = { id: changeId++, tool: call.name, args, checked: true, ...describe(call.name, args) };
+						plan.push(change);
+						planStep ??= step({ icon: "layers", label: "", active: true });
+						planStep.label = `Planning changes (${plan.length})`;
+						planStep.detail = plan.map((c) => `• ${c.summary}`).join("\n");
+						result = "Added to the plan. The user approves the whole plan with one click after your reply; don't ask them to confirm and don't say it's done.";
+					}
 				} else {
+					const s = step({ icon: stepIcon(call.name), label: `${stepLabel(call.name, args, true)}…`, active: true });
 					result = look(call.name, args);
-					reply.activity.push(activityLabel(call.name, args));
+					Object.assign(s, { label: stepLabel(call.name, args, false), detail: result.length > 600 ? `${result.slice(0, 600)}…` : result, active: false });
 				}
+				if (!done.has(key)) fresh++;
+				if (!refused) done.add(key);
 				history.push({ role: "tool", tool_call_id: call.id, content: result });
 			}
+			// Going round in circles: stop asking.
+			if (!fresh) break;
 		}
+		if (planStep) Object.assign(planStep, { label: `Planned ${plan.length} ${plan.length === 1 ? "change" : "changes"}`, active: false });
 		if (plan.length) say(reply, { plan: { changes: plan, status: "waiting", undo: [] } });
 		if (!reply.text.trim()) say(reply, { text: plan.length ? "Here's what I'd like to do:" : "…" });
 	} catch (e) {
-		say(reply, { error: e instanceof Error ? e.message : String(e) });
+		const message = e instanceof Error ? e.message : String(e);
+		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : message });
 	} finally {
+		for (const s of reply.steps) s.active = false;
 		say(reply, { streaming: false });
 		chat.busy = false;
 	}
 	if (++sinceMemory >= 4) void updateMemory();
 }
 
-function activityLabel(tool: string, a: Record<string, unknown>): string {
+function stepLabel(tool: string, a: Record<string, unknown>, now: boolean): string {
 	switch (tool) {
 		case "list_cave":
-			return "Looked through your cave";
+			return now ? "Looking through your cave" : "Looked through your cave";
 		case "read_note":
-			return `Read “${String(a.path ?? "")}”`;
+			return `${now ? "Reading" : "Read"} “${String(a.path ?? "")}”`;
 		case "search_notes":
-			return `Searched for “${String(a.query ?? "")}”`;
+			return `${now ? "Searching" : "Searched"} for “${String(a.query ?? "")}”`;
 		case "list_tags":
-			return "Checked your tags";
+			return now ? "Checking your tags" : "Checked your tags";
 		case "get_appearance":
-			return "Checked the app's look";
+			return now ? "Checking the app's look" : "Checked the app's look";
 	}
 	return tool;
 }
+
+const stepIcon = (tool: string): IconName => (tool === "search_notes" ? "search" : tool === "list_cave" ? "folder" : tool === "list_tags" ? "tag" : tool === "get_appearance" ? "palette" : "file");
 
 /** Makes the checked changes of a plan, in order. */
 export async function approve(m: ChatMessage) {
@@ -219,7 +361,10 @@ export async function approve(m: ChatMessage) {
 	if (!plan || plan.status !== "waiting") return;
 	plan.status = "doing";
 	let done = 0, failed = 0;
-	for (const c of plan.changes) {
+	// Clearing the cave goes first and the home page last, so the note it points to is made first.
+	const rank = (c: Change) => (c.tool === "clear_cave" ? 0 : c.tool === "set_home" ? 2 : 1);
+	const order = [...plan.changes].sort((a, b) => rank(a) - rank(b));
+	for (const c of order) {
 		if (!c.checked) continue;
 		try {
 			plan.undo.push(await apply(c));
@@ -253,6 +398,7 @@ export async function undo(m: ChatMessage) {
 export async function newChat() {
 	const old = history;
 	history = [];
+	turnStart = 0;
 	if (old.length > 1) void updateMemory(old);
 	chat.messages = [];
 	sinceMemory = 0;

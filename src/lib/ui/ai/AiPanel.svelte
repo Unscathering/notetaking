@@ -4,7 +4,8 @@
 	import { fade, fly } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
 	import { addModelFile, ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
-	import { chat, loadMemory, newChat, saveMemory, send, updateMemory } from "../../ai/agent.svelte";
+	import { SvelteSet } from "svelte/reactivity";
+	import { THINKING, chat, loadMemory, newChat, saveMemory, send, updateMemory } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
 	import { markdown } from "../../ai/markdown";
 	import { MODELS } from "../../ai/models";
@@ -23,6 +24,18 @@
 	let memoryDraft = $state("");
 	let memorySaved = $state(false);
 	let checked = false;
+	/** Steps whose details are showing, as "message:step". */
+	const opened = new SvelteSet<string>();
+	const toggle = (key: string) => (opened.has(key) ? opened.delete(key) : opened.add(key));
+
+	// A new playful word every couple of seconds while the AI thinks.
+	let word = $state(0);
+	$effect(() => {
+		if (!chat.busy) return;
+		word = Math.floor(Math.random() * THINKING.length);
+		const timer = setInterval(() => (word = (word + 1 + Math.floor(Math.random() * (THINKING.length - 1))) % THINKING.length), 2400);
+		return () => clearInterval(timer);
+	});
 
 	$effect(() => {
 		if (aiPanel.open && !checked) {
@@ -35,6 +48,7 @@
 	$effect(() => {
 		void chat.messages.length;
 		void chat.messages.at(-1)?.text;
+		void chat.messages.at(-1)?.steps.length;
 		if (scroller) scroller.scrollTop = scroller.scrollHeight;
 	});
 
@@ -174,15 +188,25 @@
 					{#if m.role === "user"}
 						<div class="bubble">{m.text}</div>
 					{:else}
-						{#if m.activity.length}
-							<div class="activity">
-								{#each m.activity as a, i (i)}<span>{@html icon(a.startsWith("Remembered") ? "brain" : a.startsWith("Searched") ? "search" : "file", 11)}{a}</span>{/each}
-							</div>
+						{#if m.steps.length}
+							<ul class="steps">
+								{#each m.steps as st, i (i)}
+									{@const key = `${m.id}:${i}`}
+									<li class:active={st.active}>
+										<button class="step-row" disabled={!st.detail} onclick={() => toggle(key)} aria-expanded={opened.has(key)}>
+											<span class="s-ico">{#if st.active}<span class="mini-spin"></span>{:else}{@html icon(st.icon, 12)}{/if}</span>
+											<span class="s-label">{st.label}</span>
+											{#if st.detail}<span class="arrow" class:open={opened.has(key)}>{@html icon("chevron", 12)}</span>{/if}
+										</button>
+										{#if st.detail && opened.has(key)}<pre class="detail" transition:fade={{ duration: ms }}>{st.detail}</pre>{/if}
+									</li>
+								{/each}
+							</ul>
 						{/if}
 						{#if m.text.trim()}
 							<div class="reply" class:streaming={m.streaming}>{@html markdown(m.text)}</div>
 						{:else if m.streaming}
-							<div class="typing"><i></i><i></i><i></i></div>
+							<div class="thinking">{@html icon("sparkles", 13)}{#key word}<span in:fade={{ duration: ms }}>{THINKING[word]}…</span>{/key}</div>
 						{/if}
 						{#if m.plan}<PlanCard {m} />{/if}
 						{#if m.error}<p class="problem">{m.error}</p>{/if}
@@ -498,25 +522,89 @@
 		white-space: pre-wrap;
 		word-wrap: break-word;
 	}
-	.activity {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		margin-bottom: 7px;
+	.steps {
+		margin: 0 0 8px;
+		padding: 0;
+		list-style: none;
 	}
-	.activity span {
-		display: inline-flex;
+	.step-row {
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		max-width: 100%;
-		padding: 2px 8px;
-		overflow: hidden;
-		border-radius: 999px;
-		background: var(--hover);
+		gap: 7px;
+		width: 100%;
+		padding: 3px 6px;
+		border: 0;
+		border-radius: calc(var(--radius) * 0.7);
+		background: transparent;
 		color: var(--muted);
-		font-size: 11px;
+		font: inherit;
+		font-size: 12px;
+		text-align: left;
+		cursor: pointer;
+		transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.step-row:hover:not(:disabled) {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.step-row:disabled {
+		cursor: default;
+	}
+	.active .step-row {
+		color: var(--text);
+	}
+	.s-ico {
+		display: inline-flex;
+		flex: none;
+		color: var(--accent);
+	}
+	.s-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
+	}
+	.arrow {
+		display: inline-flex;
+		flex: none;
+		transition: transform var(--dur) var(--ease);
+	}
+	.arrow.open {
+		transform: rotate(90deg);
+	}
+	.mini-spin {
+		width: 10px;
+		height: 10px;
+		border: 1.5px solid var(--border);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	.detail {
+		max-height: 180px;
+		margin: 2px 0 6px 25px;
+		padding: 8px 10px;
+		overflow: auto;
+		border-left: 2px solid var(--border);
+		background: color-mix(in srgb, var(--hover) 60%, transparent);
+		border-radius: 0 var(--radius) var(--radius) 0;
+		color: var(--muted);
+		font: 11.5px/1.5 var(--font-ui);
+		white-space: pre-wrap;
+		word-wrap: break-word;
+	}
+	.thinking {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 4px 6px;
+		font-size: 12.5px;
+		color: var(--muted);
+	}
+	.thinking :global(svg) {
+		color: var(--accent);
+		animation: pulse 1.2s ease-in-out infinite;
 	}
 	.reply {
 		font-size: 13.5px;
@@ -577,35 +665,6 @@
 		border-radius: 2px;
 		background: var(--accent);
 		animation: pulse 0.9s ease-in-out infinite;
-	}
-	.typing {
-		display: inline-flex;
-		gap: 4px;
-		padding: 8px 0;
-	}
-	.typing i {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--muted);
-		animation: bounce 1.1s ease-in-out infinite;
-	}
-	.typing i:nth-child(2) {
-		animation-delay: 0.15s;
-	}
-	.typing i:nth-child(3) {
-		animation-delay: 0.3s;
-	}
-	@keyframes bounce {
-		30% {
-			transform: translateY(-4px);
-			opacity: 1;
-		}
-		0%,
-		60%,
-		100% {
-			opacity: 0.4;
-		}
 	}
 	.composer {
 		padding: 10px 12px 8px;

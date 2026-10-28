@@ -1,6 +1,7 @@
 // Tells you when a newer Basalt is out. The desktop app asks GitHub for the
-// latest release now and then; one click downloads the new installer, which
-// updates Basalt in place (your notes and settings stay as they are).
+// latest release now and then; one click downloads the new installer inside
+// the app, runs it and restarts (src-tauri/src/update.rs). Your notes,
+// settings and the AI's engine and models stay as they are.
 import { inDesktopApp } from "./cave";
 
 export const REPO = "Unscathering/notetaking";
@@ -9,7 +10,7 @@ export const DOWNLOAD_URL = `https://github.com/${REPO}/releases/latest/download
 const SKIP_KEY = "basalt.skip-update";
 const HOURS = 6;
 
-export const updates = $state<{ version: string | null; current: string; checking: boolean; reached: boolean }>({ version: null, current: "", checking: false, reached: false });
+export const updates = $state<{ version: string | null; current: string; checking: boolean; reached: boolean; installing: { done: number; total: number } | null; error: string }>({ version: null, current: "", checking: false, reached: false, installing: null, error: "" });
 
 /** "0.10.1" is newer than "0.9.3". */
 function newer(a: string, b: string) {
@@ -39,6 +40,27 @@ export async function checkForUpdate(quiet = true) {
 	}
 }
 
+/** Downloads the new installer, runs it and closes Basalt so it can be replaced. */
+export async function installUpdate() {
+	if (updates.installing) return;
+	updates.installing = { done: 0, total: 0 };
+	updates.error = "";
+	const { invoke } = await import("@tauri-apps/api/core");
+	const { listen } = await import("@tauri-apps/api/event");
+	const stop = await listen<{ what: string; done: number; total: number }>("ai-progress", (e) => {
+		if (e.payload.what === "update") updates.installing = { done: e.payload.done, total: e.payload.total };
+	});
+	try {
+		await invoke("update_install");
+	} catch (e) {
+		updates.error = String(e);
+		updates.installing = null;
+	} finally {
+		stop();
+	}
+}
+
+/** The old way, if the update can't be done inside the app: open the download in the browser. */
 export async function downloadUpdate() {
 	const { openUrl } = await import("@tauri-apps/plugin-opener");
 	await openUrl(DOWNLOAD_URL);

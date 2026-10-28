@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
     time::Duration,
@@ -202,42 +202,155 @@ fn reasons(e: &dyn std::error::Error) -> String {
     text
 }
 
-async fn download(app: &AppHandle, engine: &Engine, url: &str, dest: &Path, what: &str) -> Result<(), String> {
-    engine.cancel_download.store(false, Ordering::SeqCst);
-    // If the first try can't connect, try once more the old-fashioned way (HTTP/1.1).
-    let res = match client()?.get(url).send().await {
-        Ok(r) => r,
-        Err(first) => {
+/// How many pieces a big download is split into. Hugging Face and GitHub limit
+/// each connection's speed, so several at once finish much sooner.
+const PIECES: u64 = 8;
+
+/// Opens a download: tries the normal way, then the old-fashioned way
+/// (HTTP/1.1) if that can't connect. Asks for the first byte only, to learn the
+/// size, where the file really lives (after redirects) and whether it can be
+/// fetched in pieces.
+async fn open(url: &str) -> Result<(reqwest::Client, reqwest::Response), String> {
+    let first = client()?;
+    match first.get(url).header("Range", "bytes=0-0").send().await {
+        Ok(r) => Ok((first, r)),
+        Err(e1) => {
             let http1 = reqwest::Client::builder().user_agent("Basalt").http1_only().build().map_err(|e| e.to_string())?;
-            http1.get(url).send().await.map_err(|e| format!("Couldn't start the download: {} (first try: {})", reasons(&e), reasons(&first)))?
+            let r = http1
+                .get(url)
+                .header("Range", "bytes=0-0")
+                .send()
+                .await
+                .map_err(|e| format!("Couldn't start the download: {} (first try: {})", reasons(&e), reasons(&e1)))?;
+            Ok((http1, r))
+        }
+    }
+}
+
+pub(crate) async fn download(app: &AppHandle, engine: &Engine, url: &str, dest: &Path, what: &str) -> Result<(), String> {
+    fetch(engine, url, dest, |done, total| {
+        let _ = app.emit("ai-progress", Progress { what: what.into(), done, total });
+    })
+    .await
+}
+
+/// Downloads `url` to `dest`, calling `progress(done, total)` every megabyte or so.
+async fn fetch(engine: &Engine, url: &str, dest: &Path, progress: impl Fn(u64, u64)) -> Result<(), String> {
+    engine.cancel_download.store(false, Ordering::SeqCst);
+    let (http, probe) = open(url).await?;
+    if !probe.status().is_success() {
+        return Err(format!("The download failed ({}).", probe.status()));
+    }
+    // "bytes 0-0/4683073952" → the whole size, if the server can send pieces.
+    let total = probe
+        .headers()
+        .get("content-range")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit('/').next())
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|_| probe.status() == reqwest::StatusCode::PARTIAL_CONTENT);
+    let real_url = probe.url().to_string();
+    drop(probe);
+    let part = dest.with_extension("part");
+    let done = AtomicU64::new(0);
+    let shown = AtomicU64::new(0);
+    let tick = |n: u64, total: u64| {
+        let now = done.fetch_add(n, Ordering::SeqCst) + n;
+        let last = shown.load(Ordering::SeqCst);
+        if now - last > 1_000_000 || now == total {
+            shown.store(now, Ordering::SeqCst);
+            progress(now, total);
         }
     };
+    let result = match total {
+        Some(total) if total > 20_000_000 => {
+            let file = tokio::fs::File::create(&part).await.map_err(|e| e.to_string())?;
+            file.set_len(total).await.map_err(|e| e.to_string())?;
+            drop(file);
+            let size = total.div_ceil(PIECES);
+            let pieces = (0..PIECES).map(|i| (i * size, ((i + 1) * size).min(total))).filter(|(a, b)| a < b);
+            futures_util::future::try_join_all(pieces.map(|(from, to)| piece(&http, engine, &real_url, &part, from, to, |n| tick(n, total))))
+                .await
+                .map(|_| ())
+        }
+        _ => whole(&http, engine, &real_url, &part, &tick).await,
+    };
+    if let Err(e) = result {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(e);
+    }
+    tokio::fs::rename(&part, dest).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Fetches bytes `from..to` into their place in the file. If the connection
+/// drops, it carries on from where it stopped (a few times).
+async fn piece(http: &reqwest::Client, engine: &Engine, url: &str, part: &Path, from: u64, to: u64, tick: impl Fn(u64)) -> Result<(), String> {
+    use tokio::io::AsyncSeekExt;
+    let mut file = tokio::fs::OpenOptions::new().write(true).open(part).await.map_err(|e| e.to_string())?;
+    let mut at = from;
+    let mut tries = 0;
+    while at < to {
+        if tries > 4 {
+            return Err("The download kept getting cut off. Try again in a little while.".into());
+        }
+        let before = at;
+        let res = http.get(url).header("Range", format!("bytes={}-{}", at, to - 1)).send().await;
+        let mut stream = match res {
+            Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r.bytes_stream(),
+            Ok(r) => return Err(format!("The download failed ({}).", r.status())),
+            Err(_) if tries < 4 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_secs(tries)).await;
+                continue;
+            }
+            Err(e) => return Err(format!("The download was interrupted: {}", reasons(&e))),
+        };
+        file.seek(std::io::SeekFrom::Start(at)).await.map_err(|e| e.to_string())?;
+        while let Some(chunk) = stream.next().await {
+            if engine.cancel_download.load(Ordering::SeqCst) {
+                return Err("Download stopped.".into());
+            }
+            match chunk {
+                Ok(c) => {
+                    let c = &c[..c.len().min((to - at) as usize)];
+                    file.write_all(c).await.map_err(|e| e.to_string())?;
+                    at += c.len() as u64;
+                    tick(c.len() as u64);
+                }
+                Err(_) if tries < 4 => {
+                    tries += 1;
+                    break;
+                }
+                Err(e) => return Err(format!("The download was interrupted: {}", reasons(&e))),
+            }
+        }
+        // Cut off without getting anywhere: that counts as a try.
+        if at == before {
+            tries += 1;
+        }
+    }
+    file.flush().await.map_err(|e| e.to_string())
+}
+
+/// For servers that can't send pieces: one connection, start to finish.
+async fn whole(http: &reqwest::Client, engine: &Engine, url: &str, part: &Path, tick: impl Fn(u64, u64)) -> Result<(), String> {
+    let res = http.get(url).send().await.map_err(|e| format!("Couldn't start the download: {}", reasons(&e)))?;
     if !res.status().is_success() {
         return Err(format!("The download failed ({}).", res.status()));
     }
     let total = res.content_length().unwrap_or(0);
-    let part = dest.with_extension("part");
-    let mut file = tokio::fs::File::create(&part).await.map_err(|e| e.to_string())?;
+    let mut file = tokio::fs::File::create(part).await.map_err(|e| e.to_string())?;
     let mut stream = res.bytes_stream();
-    let (mut done, mut last) = (0u64, 0u64);
     while let Some(chunk) = stream.next().await {
         if engine.cancel_download.load(Ordering::SeqCst) {
-            drop(file);
-            let _ = tokio::fs::remove_file(&part).await;
             return Err("Download stopped.".into());
         }
         let chunk = chunk.map_err(|e| format!("The download was interrupted: {}", reasons(&e)))?;
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-        done += chunk.len() as u64;
-        if done - last > 1_000_000 || done == total {
-            last = done;
-            let _ = app.emit("ai-progress", Progress { what: what.into(), done, total });
-        }
+        tick(chunk.len() as u64, total);
     }
-    file.flush().await.map_err(|e| e.to_string())?;
-    drop(file);
-    tokio::fs::rename(&part, dest).await.map_err(|e| e.to_string())?;
-    Ok(())
+    file.flush().await.map_err(|e| e.to_string())
 }
 
 /// Picks the engine file for this computer from a release's files: the one
@@ -366,6 +479,8 @@ pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, 
         Command::new(&server)
             .args(["-m", &model, "--host", "127.0.0.1", "--port", &port.to_string()])
             .args(["-ngl", &gpu_layers.to_string(), "-c", &context.to_string(), "--jinja"])
+            // A smaller memory of the chat so far (half size, nearly the same quality), so more fits.
+            .args(["-ctk", "q8_0"])
             // Only the chosen graphics card, not the one built into the processor.
             .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
             .current_dir(server.parent().unwrap_or(Path::new("."))),
@@ -449,6 +564,23 @@ pub fn ai_stop_chat(engine: State<'_, Engine>) {
 
 #[cfg(test)]
 mod tests {
+    /// Run with a local server that sends pieces: `BASALT_TEST_URL=http://127.0.0.1:8765/big.bin cargo test fetch -- --ignored`.
+    #[test]
+    #[ignore]
+    fn fetches_in_pieces_and_whole() {
+        let url = std::env::var("BASALT_TEST_URL").unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let dir = std::env::temp_dir();
+        for (name, u) in [("pieces.bin", url.clone()), ("whole.bin", format!("{url}?norange"))] {
+            let dest = dir.join(name);
+            let last = std::sync::Mutex::new((0, 0));
+            rt.block_on(super::fetch(&super::Engine::default(), &u, &dest, |d, t| *last.lock().unwrap() = (d, t))).unwrap();
+            let want = std::fs::read(std::env::var("BASALT_TEST_FILE").unwrap()).unwrap();
+            assert_eq!(std::fs::read(&dest).unwrap(), want, "{name}");
+            println!("{name}: last progress {:?}", last.lock().unwrap());
+        }
+    }
+
     use super::pick_asset;
     use serde_json::json;
 
