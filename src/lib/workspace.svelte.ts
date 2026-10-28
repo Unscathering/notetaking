@@ -21,6 +21,7 @@ export type Panel = "files" | "search" | "tags";
 /** Tabs that aren't notes: the graph and other whole-cave views. */
 export const VIEWS: Record<string, { label: string; icon: IconName }> = {
 	"basalt:graph": { label: "Graph", icon: "graph" },
+	"basalt:calendar": { label: "Calendar", icon: "calendar" },
 };
 export const isView = (path: string) => path.startsWith("basalt:");
 
@@ -227,12 +228,13 @@ class Workspace {
 	}
 
 	/** Replaces a note's whole text from outside the editor, and saves it. */
-	async writeNote(path: string, text: string) {
+	/** Writes a note from outside the editor. `track: false` leaves it out of note history (for text still being written). */
+	async writeNote(path: string, text: string, track = true) {
 		if (!this.cave) return;
 		const old = this.texts.get(path);
-		if (old != null && old !== text) for (const h of this.hooks.replacing) h(path, old);
+		if (track && old != null && old !== text) for (const h of this.hooks.replacing) h(path, old);
 		await this.cave.write(path, text);
-		for (const h of this.hooks.saved) h(path, text);
+		if (track) for (const h of this.hooks.saved) h(path, text);
 		this.texts.set(path, text);
 		this.outside = { path, text, n: (this.outside?.n ?? 0) + 1 };
 		if (!this.files.includes(path)) await this.refresh();

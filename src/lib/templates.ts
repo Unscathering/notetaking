@@ -156,10 +156,12 @@ export async function makeTemplateFolder() {
 	await ws.open(joinPath(TEMPLATE_FOLDER, "Daily note.md"));
 }
 
-/** Opens today's note, making it first if needed. */
-export async function today(offset = 0) {
+/** Opens today's note (or one `offset` days away), making it first if needed. */
+export const today = (offset = 0) => openDay(shift(new Date(), offset));
+
+/** Opens a day's note, making it from the daily template first if needed. */
+export async function openDay(day: Date) {
 	if (!ws.cave) return;
-	const day = shift(new Date(), offset);
 	const path = joinPath(DAILY_FOLDER, `${dateName(day)}.md`);
 	if (!(await ws.cave.exists(path))) {
 		const t = templates().find((x) => x.name === "Daily note")!;

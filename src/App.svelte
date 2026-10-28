@@ -11,6 +11,7 @@
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import BoardView from "./lib/ui/BoardView.svelte";
 	import GraphView from "./lib/ui/GraphView.svelte";
+	import CalendarView from "./lib/ui/CalendarView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -137,6 +138,8 @@
 				</div>
 			{:else if ws.active === "basalt:graph"}
 				<GraphView {ms} />
+			{:else if ws.active === "basalt:calendar"}
+				<CalendarView {ms} />
 			{:else if ws.active && showingBoard}
 				<BoardView path={ws.active} {ms} />
 			{:else if ws.active}

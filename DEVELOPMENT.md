@@ -71,6 +71,11 @@ check again before a public launch.
   (`saved`, `replacing`, `renamed`): one every five minutes while typing, and
   pinned copies before anything else replaces a note. The window compares a
   version with now, line by line, and restores it.
+- `basalt:calendar` is `ui/CalendarView.svelte`: a month of days with daily
+  notes and everything dated (`src/lib/agenda.ts`: board cards with a due
+  date, checklist items with `due:`, `📅` or `@` and a date). The ✨ beside
+  a week runs `src/lib/recap.svelte.ts`, which has the AI write that week's
+  recap into `Daily/<year>-W<week> recap.md`, filling in live.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

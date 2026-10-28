@@ -11,6 +11,7 @@ import { activeEditor } from "./editor/active";
 import { startHelp } from "./editor/writingHelp";
 import type { Mode } from "./ai/proofread";
 import { today } from "./templates";
+import { recap } from "./recap.svelte";
 
 /** Writing help on the selection, or the whole note if nothing is selected. */
 const help = (mode: Mode) => () => {
@@ -49,7 +50,7 @@ export const COMMANDS: Command[] = [
 	{ id: "rewrite", label: "Rewrite the selection", icon: "pencil", run: help("rewrite") },
 	{ id: "new-note", label: "New note", icon: "pencil", keys: "Ctrl+N", run: () => ws.newNote() },
 	{ id: "new-board", label: "New board", icon: "board", keys: "Ctrl+Shift+B", run: () => ws.newBoard() },
-	{ id: "today", label: "Today's note", icon: "calendar", keys: "Ctrl+Shift+D", run: () => today() },
+	{ id: "today", label: "Today's note", icon: "sun", keys: "Ctrl+Shift+D", run: () => today() },
 	{ id: "yesterday", label: "Yesterday's note", icon: "calendar", run: () => today(-1) },
 	{ id: "template", label: "New note from a template", icon: "layers", keys: "Ctrl+Shift+N", run: () => (ws.modal = "templates") },
 	{ id: "new-folder", label: "New folder", icon: "folderPlus", run: () => ws.newFolder() },
@@ -64,6 +65,8 @@ export const COMMANDS: Command[] = [
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.note && ws.setHome(ws.note) },
 	{ id: "history", label: "History of this note", icon: "clock", run: () => (ws.note || ws.recent ? ws.showHistory(ws.note ?? ws.recent) : alert("Open a note first.")) },
 	{ id: "graph", label: "Open the graph", icon: "graph", run: () => ws.open("basalt:graph") },
+	{ id: "calendar", label: "Open the calendar", icon: "calendar", run: () => ws.open("basalt:calendar") },
+	{ id: "recap", label: "Recap last week with the AI", icon: "sparkles", run: () => { const d = new Date(); void recap(new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) - 7)); } },
 	{
 		id: "updates",
 		label: "Check for updates",
