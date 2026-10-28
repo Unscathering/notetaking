@@ -96,14 +96,9 @@ export function diff(a: string, b: string): Edit[] {
 		}
 	}
 	close();
-	// Grow each change to whole words and drop changes to spacing alone.
+	// The pieces are whole words, so each change already covers whole words.
+	// Changes to spacing alone are dropped: people space things their own way.
 	return out
-		.map((e) => {
-			let { from, to, insert } = e;
-			while (from > 0 && /[\p{L}\p{N}’']/u.test(a[from - 1]) && (insert === "" || /[\p{L}\p{N}’']/u.test(insert[0]) || /[\p{L}\p{N}’']/u.test(a[from]))) insert = a[--from] + insert;
-			while (to < a.length && /[\p{L}\p{N}’']/u.test(a[to]) && (insert === "" || /[\p{L}\p{N}’']/u.test(insert.at(-1)!) || /[\p{L}\p{N}’']/u.test(a[to - 1] ?? ""))) insert += a[to++];
-			return { from, to, insert, why: "" };
-		})
 		.filter((e) => a.slice(e.from, e.to).replace(/\s+/g, " ") !== e.insert.replace(/\s+/g, " "))
 		.map((e) => ({ ...e, why: kind(a.slice(e.from, e.to), e.insert) }));
 }
@@ -128,24 +123,29 @@ function kind(old: string, now: string): string {
 	return "Grammar";
 }
 
-/** Parts of a note that must never be touched: links, code, tags, formatting, web addresses. */
-const PROTECTED = /\[\[|\]\]|`|https?:|[*_~=#|<>[\]()]/;
+/** Parts of a note that must never be touched: links, code, tags, web addresses. */
+const LOCKED = /\[\[[^\]]*\]\]|\[[^\]]*\]\([^)]*\)|`[^`]*`|https?:\/\/\S+|(?<![\p{L}\p{N}])#[\p{L}\p{N}_/-]+/gu;
+/** Formatting marks that must stay as they are. */
+const MARKS = /[*_~=#|<>[\]()`]/;
 
 /**
  * Keeps only the changes the mode allows. Grammar mode is strict: small
- * changes of at most two words, and if the AI changed much more than that
+ * changes of at most two words, and if the AI reworded much more than that
  * overall, it rewrote the line instead of proofreading it, so nothing is kept.
+ * Links, code, tags and formatting are never changed in any mode.
  */
 export function allowed(mode: Mode, original: string, edits: Edit[]): Edit[] {
-	const total = Math.max(1, words(original));
+	const locked = [...original.matchAll(LOCKED)].map((m) => [m.index, m.index + m[0].length]);
 	const kept = edits.filter((e) => {
 		const old = original.slice(e.from, e.to);
-		if (PROTECTED.test(old) || PROTECTED.test(e.insert)) return false;
+		if (MARKS.test(old) || MARKS.test(e.insert)) return false;
+		if (locked.some(([a, b]) => e.from < b && e.to > a)) return false;
 		const size = Math.max(words(old), words(e.insert));
 		return mode === "grammar" ? size <= 2 : size <= 12;
 	});
-	const changed = kept.reduce((sum, e) => sum + Math.max(words(original.slice(e.from, e.to)), words(e.insert)), 0);
-	if (changed / total > (mode === "grammar" ? 0.3 : 0.6) && changed > 2) return [];
+	// Capitals, punctuation and spelling are always fine; rewording is what's counted.
+	const reworded = kept.filter((e) => e.why === "Grammar").reduce((sum, e) => sum + Math.max(words(original.slice(e.from, e.to)), words(e.insert)), 0);
+	if (reworded > 2 && reworded / Math.max(1, words(original)) > (mode === "grammar" ? 0.3 : 0.6)) return [];
 	return kept;
 }
 

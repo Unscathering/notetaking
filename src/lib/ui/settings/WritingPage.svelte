@@ -8,6 +8,7 @@
 	<Switch title="Typewriter scrolling" about="Keeps the line you're typing on in the middle of the screen." ico="type" bind:checked={writing.typewriter} />
 	<Switch title="Dim other paragraphs" about="Fades everything except the paragraph you're in." ico="eye" bind:checked={writing.dimOthers} />
 	<Switch title="Spell check" about="Underlines words that might be misspelled." ico="check" bind:checked={writing.spellcheck} />
+	<Switch title="Check grammar as I write" about="Your AI checks each paragraph once you move on from it, and underlines mistakes. Only spelling, grammar and punctuation; it never rewords. Uses your graphics card while you write." ico="sparkles" bind:checked={writing.aiCheck} />
 </section>
 
 <style>

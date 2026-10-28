@@ -161,8 +161,15 @@ export async function stop() {
 /** How much text, in tokens, the AI can keep in mind at once. */
 export const CONTEXT = 16384;
 
-/** Wakes the engine up if it's asleep. */
-export async function wake() {
+let waking: Promise<void> | null = null;
+
+/** Wakes the engine up if it's asleep. Calls while it's waking up wait for the same start. */
+export function wake(): Promise<void> {
+	waking ??= start().finally(() => (waking = null));
+	return waking;
+}
+
+async function start() {
 	if (devUrl()) ai.running = true;
 	if (devUrl() || ai.running) return rest();
 	const file = ai.models.find((m) => m.file === ai.model);

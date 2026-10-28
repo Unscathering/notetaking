@@ -7,12 +7,14 @@ interface Writing {
 	/** Fade every paragraph except the one you're in. */
 	dimOthers: boolean;
 	spellcheck: boolean;
+	/** The AI checks grammar in each paragraph after you leave it. */
+	aiCheck: boolean;
 	/** Hide everything but the text (not remembered between visits). */
 	focus: boolean;
 }
 
 function load(): Writing {
-	const base: Writing = { typewriter: false, dimOthers: false, spellcheck: true, focus: false };
+	const base: Writing = { typewriter: false, dimOthers: false, spellcheck: true, aiCheck: false, focus: false };
 	try {
 		return { ...base, ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Writing>), focus: false };
 	} catch {

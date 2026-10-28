@@ -13,6 +13,7 @@ import { noteHeader } from "./properties";
 import { suggestions, type SuggestHooks } from "./suggest";
 import { richBlocks, type BlockHooks } from "./blocks";
 import { blockHandles, dimOthers, pasteAndDrop, typewriter, type BehaviorHooks } from "./behaviors";
+import { writingHelp, type WritingHelpHooks } from "./writingHelp";
 
 const highlight = HighlightStyle.define([
 	{ tag: t.heading, color: "var(--heading)", fontWeight: "var(--heading-weight)" },
@@ -135,7 +136,7 @@ const look = EditorView.theme({
 	".cm-selectionMatch": { backgroundColor: "var(--hover)" },
 });
 
-export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks {
+export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks, WritingHelpHooks {
 	onChange(text: string): void;
 	openLink(target: string): void;
 }
@@ -162,6 +163,7 @@ export function editorExtensions(hooks: EditorHooks): Extension[] {
 		typewriter,
 		dimOthers,
 		wikilinkClicks(hooks.openLink),
+		writingHelp(hooks),
 		look,
 		placeholder("Start writing…"),
 		keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),

@@ -6,6 +6,18 @@ import { writing } from "./writing.svelte";
 import { checkForUpdate, updates } from "./updates.svelte";
 import { inDesktopApp } from "./cave";
 import { aiPanel } from "./ai/panel.svelte";
+import { helpHooks } from "./ai/writer";
+import { activeEditor } from "./editor/active";
+import { startHelp } from "./editor/writingHelp";
+import type { Mode } from "./ai/proofread";
+
+/** Writing help on the selection, or the whole note if nothing is selected. */
+const help = (mode: Mode) => () => {
+	const view = activeEditor.view;
+	if (!view) return alert("Open a note first.");
+	view.focus();
+	void startHelp(view, helpHooks, mode);
+};
 
 export interface Command {
 	id: string;
@@ -31,6 +43,9 @@ export const COMMANDS: Command[] = [
 	{ id: "tags", label: "Browse tags", icon: "tag", keys: "Ctrl+Shift+T", run: () => showPanel("tags") },
 	{ id: "switcher", label: "Open a note", icon: "file", keys: "Ctrl+O", run: () => (ws.modal = "switcher") },
 	{ id: "ai", label: "Ask the AI", icon: "sparkles", keys: "Ctrl+J", run: () => (aiPanel.open = !aiPanel.open) },
+	{ id: "grammar", label: "Check grammar (selection or whole note)", icon: "check", keys: "Ctrl+Shift+G", run: help("grammar") },
+	{ id: "fix-writing", label: "Fix my writing (selection or whole note)", icon: "sparkles", run: help("fix") },
+	{ id: "rewrite", label: "Rewrite the selection", icon: "pencil", run: help("rewrite") },
 	{ id: "new-note", label: "New note", icon: "pencil", keys: "Ctrl+N", run: () => ws.newNote() },
 	{ id: "new-board", label: "New board", icon: "board", keys: "Ctrl+Shift+B", run: () => ws.newBoard() },
 	{ id: "new-folder", label: "New folder", icon: "folderPlus", run: () => ws.newFolder() },

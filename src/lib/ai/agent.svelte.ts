@@ -236,7 +236,7 @@ export async function send(text: string) {
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
-				stream({ messages: fit(system(memory), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8 }, (d) => {
+				stream({ messages: fit(system(memory), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true }, (d) => {
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
 				if (delta.content) {

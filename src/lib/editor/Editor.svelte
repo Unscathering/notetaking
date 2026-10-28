@@ -9,6 +9,8 @@
 	import { frontmatterRange } from "../notes";
 	import { ws } from "../workspace.svelte";
 	import { writing } from "../writing.svelte";
+	import { helpHooks } from "../ai/writer";
+	import { activeEditor } from "./active";
 
 	interface Props {
 		path: string;
@@ -38,12 +40,14 @@
 				pickImage: () => ws.pickImage(),
 				saveImage: (bytes, ext) => ws.saveImage(bytes, ext),
 				imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
+				...helpHooks,
 			}),
 		});
 	}
 
 	onMount(() => {
 		view = new EditorView({ parent: host, state: stateFor(path, text) });
+		activeEditor.view = view;
 		shown = path;
 		// Banners stretch across the whole pane, wider than the text column.
 		const measure = new ResizeObserver(() => view && view.dom.style.setProperty("--pane-width", `${view.scrollDOM.clientWidth}px`));
@@ -51,6 +55,7 @@
 		view.focus();
 		return () => {
 			measure.disconnect();
+			if (activeEditor.view === view) activeEditor.view = null;
 			view?.destroy();
 		};
 	});

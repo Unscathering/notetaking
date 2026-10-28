@@ -66,6 +66,13 @@ check again before a public launch.
   The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
   `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
   lets you try it without the desktop app.
+- Writing help: `ai/proofread.ts` (the three modes, the word-by-word
+  comparison and the rules that keep grammar mode to small fixes, never
+  touching links, code, tags or formatting), `ai/writer.ts` (sends lines to
+  the engine one job at a time, wakes it early) and `editor/writingHelp.ts`
+  (the selection bar, underlines, review cards, the bottom bar and "check
+  grammar as I write"). `editor/active.ts` is the editor on screen, for
+  commands.
 - `src/lib/updates.svelte.ts` and `ui/UpdateNotice.svelte`: the desktop app
   asks GitHub for the latest release now and then and offers "Update now":
   `src-tauri/src/update.rs` downloads the installer, runs it on its own
@@ -131,7 +138,8 @@ Ctrl+P commands, Ctrl+O open a note, Ctrl+H home, Ctrl+N new note,
 Ctrl+Shift+B new board, Ctrl+Shift+E files, Ctrl+Shift+F search all notes,
 Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
 Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
-Ctrl+, appearance, Ctrl+F find in note.
+Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
+grammar (selection or whole note).
 
 ## Status
 

@@ -7,6 +7,7 @@
 	import { SvelteSet } from "svelte/reactivity";
 	import { THINKING, chat, loadMemory, newChat, saveMemory, send, updateMemory } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
+	import { warmUp } from "../../ai/writer";
 	import { markdown } from "../../ai/markdown";
 	import { MODELS } from "../../ai/models";
 	import { ws } from "../../workspace.svelte";
@@ -42,6 +43,11 @@
 			checked = true;
 			void refresh().catch((e) => (ai.error = String(e)));
 		}
+	});
+
+	// Start waking the AI as soon as the panel opens, so the first answer comes sooner.
+	$effect(() => {
+		if (aiPanel.open && ai.phase === "ready") warmUp();
 	});
 
 	// Keep the newest message in view while it streams in.
