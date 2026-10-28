@@ -4,7 +4,8 @@
 // and every change knows how to undo itself.
 import { baseName, joinPath, noteTitle, parentOf } from "../cave";
 import { blankCard, isBoardText, parseBoard, serializeBoard, type Board } from "../board";
-import { readProps, searchNotes } from "../notes";
+import { readProps } from "../notes";
+import { recall } from "./recall";
 import { FONT_CHOICES, GLASS_DEFAULTS, PRESETS, SIDEBAR_STYLES, WALLPAPERS, cloneTheme, type HeadingStyle, type Theme } from "../theme/theme";
 import { theme, useTheme } from "../theme/store.svelte";
 import { ws } from "../workspace.svelte";
@@ -137,8 +138,8 @@ export function look(tool: string, a: Args): string {
 			return p ? `${p}:\n\n${(ws.texts.get(p) ?? "").slice(0, 12000)}` : `There's no note called "${str(a.path)}". Use list_cave to see what exists.`;
 		}
 		case "search_notes": {
-			const hits = searchNotes(ws.texts, str(a.query), noteTitle).slice(0, 8);
-			return hits.length ? hits.map((h) => `${h.path}: ${h.snippets.map((x) => x.before + x.match + x.after).join(" … ")}`).join("\n") : "Nothing found.";
+			const hits = recall(ws.texts, str(a.query), noteTitle, 6);
+			return hits.length ? hits.map((h) => `${h.path}:\n${h.excerpt.slice(0, 300)}`).join("\n\n") : "Nothing found.";
 		}
 		case "list_tags":
 			return [...ws.tags].map(([tag, paths]) => `#${tag}: ${paths.map(noteTitle).join(", ")}`).join("\n") || "No tags yet.";

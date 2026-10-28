@@ -290,6 +290,12 @@
 						{:else if m.streaming}
 							<div class="thinking">{@html icon("sparkles", 13)}{#key word}<span in:fade={{ duration: ms }}>{THINKING[word]}…</span>{/key}</div>
 						{/if}
+						{#if m.sources?.length && !m.streaming}
+							<div class="sources">
+								<span>Sources</span>
+								{#each m.sources as s (s)}<button onclick={() => ws.open(s)} title={s}>{@html icon("file", 11)}{s.split("/").pop()?.replace(/\.md$/i, "")}</button>{/each}
+							</div>
+						{/if}
 						{#if m.plan}<PlanCard {m} />{/if}
 						{#if m.error}<p class="problem">{m.error}</p>{/if}
 					{/if}
@@ -706,6 +712,42 @@
 		font: 11.5px/1.5 var(--font-ui);
 		white-space: pre-wrap;
 		word-wrap: break-word;
+	}
+	.sources {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+		margin-top: 8px;
+		font-size: 11px;
+		color: var(--muted);
+	}
+	.sources > span {
+		margin-right: 2px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.sources button {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 180px;
+		padding: 3px 9px;
+		overflow: hidden;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 11.5px;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		cursor: pointer;
+		transition: border-color var(--dur) var(--ease);
+	}
+	.sources button:hover {
+		border-color: var(--accent);
 	}
 	.thinking {
 		display: inline-flex;

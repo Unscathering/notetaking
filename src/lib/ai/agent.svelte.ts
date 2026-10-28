@@ -16,6 +16,8 @@ import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
 import { CONTEXT, stream } from "./engine.svelte";
 import { WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
+import { recall, type Found } from "./recall";
+import { noteTitle } from "../cave";
 
 export const MEMORY_PATH = ".basalt/ai/memory.md";
 const CHATS = ".basalt/ai/chats.json";
@@ -69,6 +71,8 @@ export interface ChatMessage {
 	plan?: Plan;
 	error?: string;
 	streaming?: boolean;
+	/** Notes the answer came from, to open with a click. */
+	sources?: string[];
 }
 
 let nextId = 1;
@@ -274,7 +278,10 @@ export async function setProject(folder: string) {
 
 // ---- Talking ----
 
-function system(memory: string): string {
+function system(memory: string, found: Found[] = []): string {
+	const notes = found.length
+		? `\n\nNotes that may help with the latest message (found by searching the cave; read_note gives the whole note):\n${found.map((f) => `--- [[${noteTitle(f.path)}]] (${f.path}) ---\n${f.excerpt}`).join("\n\n")}`
+		: "";
 	const project = chat.project
 		? `\n\nThis chat is part of the project "${chat.project}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${chat.projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
 		: "";
@@ -287,6 +294,7 @@ How Basalt works:
 - The app's look (theme, colors, glass, wallpaper, fonts) can be changed with change_appearance.
 
 How you work:
+- When you answer from the user's notes, name each note you used as a link, like [[Garden plan]]. Say only what the notes say; if they don't cover it, say so instead of guessing.
 - Use list_cave, read_note, search_notes and list_tags freely to understand things before answering. Don't guess what's in a note: read it. Use the exact names list_cave shows.
 - Every change (making, editing, moving, renaming, deleting) is only proposed. All your proposed changes appear below your reply as one plan, and the user presses "Do it" once. That plan IS the confirmation: never ask "should I go ahead?", "are you sure?" or "do you want me to?" in the chat. Just propose the changes and say in a sentence or two what the plan does. Never say something is already done.
 - When the user tells you what to do, plan it straight away. Only ask questions first when you truly can't tell what they want (like a vague "set up my cave"); then ask 2 to 4 short questions in one message and wait.
@@ -301,7 +309,7 @@ ${context()}
 Today is ${new Date().toDateString()}.
 
 Your memory of this person:
-${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}${project}`;
+${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}${project}${notes}`;
 }
 
 // ---- Staying inside the AI's limit ----
@@ -369,13 +377,17 @@ export async function send(text: string) {
 	let planStep: Step | undefined;
 	let fixStep: Step | undefined;
 	let memoryStep: Step | undefined;
+	// The notes that best match the message, handed to the AI up front.
+	const found = recall(ws.texts, text, noteTitle, 3, chat.project);
+	if (found.length) step({ icon: "search", label: `Found ${found.length} ${found.length === 1 ? "note" : "notes"} that may help`, detail: found.map((f) => `• ${noteTitle(f.path)}`).join("\n") });
+	const read = new Set<string>();
 	try {
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let content = "";
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
-				stream({ messages: fit(system(memory), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true }, (d) => {
+				stream({ messages: fit(system(memory, found), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true }, (d) => {
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
 				if (delta.content) {
@@ -453,6 +465,7 @@ export async function send(text: string) {
 				} else {
 					const s = step({ icon: stepIcon(call.name), label: `${stepLabel(call.name, args, true)}…`, active: true });
 					result = look(call.name, args);
+					if (call.name === "read_note" && !result.startsWith("There's no note")) read.add(result.slice(0, result.indexOf(":\n")));
 					Object.assign(s, { label: stepLabel(call.name, args, false), detail: result.length > 600 ? `${result.slice(0, 600)}…` : result, active: false });
 				}
 				if (!done.has(key)) fresh++;
@@ -462,6 +475,10 @@ export async function send(text: string) {
 			// Going round in circles: stop asking.
 			if (!fresh) break;
 		}
+		// Sources: notes it read, and notes it linked to in its answer.
+		const linked = [...reply.text.matchAll(/\[\[([^\]|#]+)/g)].map((m) => ws.resolve(m[1].trim())).filter((p): p is string => !!p);
+		const sources = [...new Set([...read, ...linked])].filter((p) => ws.files.includes(p));
+		if (sources.length) say(reply, { sources });
 		if (planStep) Object.assign(planStep, { label: `Planned ${plan.length} ${plan.length === 1 ? "change" : "changes"}`, active: false });
 		if (plan.length) say(reply, { plan: { changes: plan, status: "waiting", undo: [] } });
 		if (!reply.text.trim()) say(reply, { text: plan.length ? "Here's what I'd like to do:" : "…" });
