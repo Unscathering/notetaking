@@ -1,5 +1,8 @@
-# Publishes a GitHub release with the Windows installer whenever a version tag
-# (like v0.1.0) is pushed.
+# Publishes a GitHub release whenever a version tag (like v0.2.0) is pushed.
+# Besides the usual files it adds two with names that never change, so one
+# link always downloads the newest Basalt:
+#   releases/latest/download/Basalt-Setup.exe     (installs, with a Start menu entry)
+#   releases/latest/download/Basalt-Portable.exe  (runs straight away, nothing to install)
 name: Release
 
 on:
@@ -29,5 +32,18 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Basalt ${{ github.ref_name }}
-          releaseBody: Download the .exe installer below and run it.
+          releaseBody: |
+            **Basalt-Setup.exe** installs Basalt (a few MB) and adds it to the Start menu. Installing over an older version updates it; your notes and settings stay.
+
+            **Basalt-Portable.exe** runs straight away with nothing to install. Keep it anywhere, even on a USB stick.
+
+            Windows may say it "protected your PC" because Basalt is new and not yet signed: click **More info**, then **Run anyway**.
           releaseDraft: false
+      - name: Add the easy download names
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe Basalt-Setup.exe
+          cp src-tauri/target/release/basalt.exe Basalt-Portable.exe
+          gh release upload "${{ github.ref_name }}" Basalt-Setup.exe Basalt-Portable.exe --clobber

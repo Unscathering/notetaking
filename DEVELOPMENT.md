@@ -51,6 +51,9 @@ check again before a public launch.
   search. `src/lib/board.ts`: boards (Markdown with `basalt: board`).
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
+- `src/lib/updates.svelte.ts` and `ui/UpdateNotice.svelte`: the desktop app
+  asks GitHub for the latest release now and then and offers a one-click
+  download (opened with the opener plugin).
 - `src/lib/editor/`: CodeMirror. `setup.ts` puts it together and holds the
   editor's look (all from theme variables). `livePreview.ts` hides Markdown
   symbols on lines you are not editing (headings, bold, links, quotes,
@@ -61,7 +64,9 @@ check again before a public launch.
   typewriter scrolling and dimming. `Editor.svelte` keeps one state per note.
 - `src/lib/theme/`: `theme.ts` (the theme shape, 24 presets, wallpapers,
   `themeVars` which turns a theme into CSS variables, including the glass
-  surfaces), `store.svelte.ts` (the live theme, saved in localStorage).
+  surfaces), `store.svelte.ts` (the live theme, saved in localStorage),
+  `media.svelte.ts` (your own background pictures, GIFs and videos, kept in
+  IndexedDB on this computer, with the 15-second limit for moving ones).
   Glass works through `--surface-*`, `--glass-filter`, `--glass-edge` and
   `--glass-grain`; liquid glass uses the SVG filter `#basalt-liquid` in
   `App.svelte`. Heading styles are CSS in `app.css` keyed on
@@ -72,7 +77,8 @@ check again before a public launch.
   `CaveSwitcher.svelte`, `ContextMenu.svelte`, `icons.ts`. `Settings.svelte`
   is the Appearance window; its pages, the little theme pictures
   (`MiniApp.svelte`), sliders, switches and the looping motion examples
-  (`demo.ts`) are in `ui/settings/`.
+  (`demo.ts`) are in `ui/settings/`. `SidebarPage.svelte` and
+  `TreePreview.svelte` hold the folder-list choices (`theme.sidebar`).
 - `src-tauri/`: the desktop shell (Rust). `capabilities/default.json` lists
   what the window may do (folder picker; read and write files).
 
@@ -87,6 +93,16 @@ check again before a public launch.
 - Windows installers are built by GitHub: `.github/workflows/build.yml` on
   every push to `main` (download from the Actions run, under Artifacts) and
   `release.yml` on a `v*` tag (publishes a release).
+
+## Releasing a version
+
+1. Raise the version in `package.json`, `src-tauri/tauri.conf.json` and
+   `src-tauri/Cargo.toml`.
+2. Commit, then tag and push: `git tag v0.3.0 && git push origin v0.3.0`.
+3. `release.yml` builds it and publishes a release with
+   `Basalt-Setup.exe` and `Basalt-Portable.exe`. The links in the README
+   always point at the newest release, and the app's update notice finds it.
+   (The repository has to be public for other people to download.)
 
 ## Keyboard shortcuts
 
@@ -115,6 +131,12 @@ Version 0.1.0 plus, so far:
   glass, frosted and liquid glass, floating panels, banner images on notes,
   six heading styles with their own font and weight, nine fonts, and motion
   styles you can watch before choosing.
+- 0.2.0: transparent panels (the "Clear" material) and seamless mode, GIF
+  and video backgrounds up to 15 seconds, a Sidebar page with folder styles
+  (arrows, icons, guide lines, where colors show, counts, sizes), 48 icons
+  and emoji for folders and notes, any custom color, the command bar's side
+  tab as a setting, direct download links, a portable version and update
+  notices.
 
 ## Next steps
 

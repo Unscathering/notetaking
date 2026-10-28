@@ -23,7 +23,12 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours. 
 
 ## Download
 
-Windows installers are built automatically. Grab the latest from [Releases](https://github.com/Unscathering/notetaking/releases), or from the newest run in the [Actions](https://github.com/Unscathering/notetaking/actions) tab, under "Artifacts".
+For Windows 10 and 11:
+
+- **[Download Basalt](https://github.com/Unscathering/notetaking/releases/latest/download/Basalt-Setup.exe)**: installs in a few seconds and adds Basalt to the Start menu.
+- **[Portable version](https://github.com/Unscathering/notetaking/releases/latest/download/Basalt-Portable.exe)**: one file that runs straight away, with nothing to install.
+
+Basalt tells you when a newer version is out; one click downloads it, and installing it updates Basalt in place. Windows may say it "protected your PC" because Basalt is new: click **More info**, then **Run anyway**.
 
 ## Build it yourself
 

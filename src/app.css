@@ -79,3 +79,11 @@ select:focus-visible {
 :root[data-headings="caps"] .cm-editor .cm-h1 {
 	font-size: calc(1em * var(--heading-scale) * var(--heading-scale));
 }
+
+/* Transparent panels: a soft shadow keeps text readable over bright backgrounds. */
+:root[data-material="clear"][data-light="no"] .app {
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+:root[data-material="clear"][data-light="yes"] .app {
+	text-shadow: 0 1px 3px rgba(255, 255, 255, 0.6);
+}

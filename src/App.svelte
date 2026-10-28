@@ -10,6 +10,8 @@
 	import Settings from "./lib/ui/Settings.svelte";
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import BoardView from "./lib/ui/BoardView.svelte";
+	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
+	import { startUpdateChecks } from "./lib/updates.svelte";
 	import { isBoardText } from "./lib/board";
 	import { icon } from "./lib/ui/icons";
 	import { COMMANDS, keyName } from "./lib/commands";
@@ -18,16 +20,29 @@
 	import { noteTitle, pickCave } from "./lib/cave";
 	import { startWorkspace, ws } from "./lib/workspace.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
+	import { mediaUrl } from "./lib/theme/media.svelte";
 
 	trackTheme();
 	trackWriting();
 	startWorkspace();
+	startUpdateChecks();
 	const ms = $derived(motionMs(theme));
 	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
 	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));
 	const words = $derived(ws.active ? (ws.texts.get(ws.active) ?? "").split(/\s+/).filter(Boolean).length : 0);
 
 	let editorHost: HTMLElement | undefined = $state();
+	let video: HTMLVideoElement | undefined = $state();
+	const videoUrl = $derived(theme.background.kind === "video" && theme.background.media ? mediaUrl(theme.background.media) : "");
+
+	// A moving background rests while Basalt is minimized or hidden.
+	$effect(() => {
+		const v = video;
+		if (!v) return;
+		const sync = () => (document.hidden ? v.pause() : void v.play().catch(() => {}));
+		document.addEventListener("visibilitychange", sync);
+		return () => document.removeEventListener("visibilitychange", sync);
+	});
 	let shown: string | null = null;
 
 	// A soft fade and lift whenever another note comes to the front.
@@ -62,7 +77,11 @@
 <svelte:window {onkeydown} />
 
 <!-- The background picture, and the filter that bends light for liquid glass. -->
-<div class="backdrop" aria-hidden="true"></div>
+<div class="backdrop" aria-hidden="true">
+	{#if videoUrl}
+		<video bind:this={video} src={videoUrl} autoplay muted loop playsinline disablepictureinpicture></video>
+	{/if}
+</div>
 <svg class="filters" width="0" height="0" aria-hidden="true">
 	<filter id="basalt-liquid" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
 		<feTurbulence type="fractalNoise" baseFrequency="0.007 0.011" numOctaves="2" seed="11" result="noise" />
@@ -129,6 +148,7 @@
 </div>
 
 <ContextMenu {ms} />
+<UpdateNotice {ms} />
 
 {#if ws.modal === "settings"}
 	<Settings {ms} onclose={() => (ws.modal = null)} />
@@ -148,6 +168,13 @@
 		background: var(--wallpaper);
 		filter: blur(var(--wallpaper-blur));
 		transition: filter var(--dur) var(--ease);
+	}
+	.backdrop video {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 	.backdrop::after {
 		content: "";
@@ -251,7 +278,7 @@
 		background-image: var(--glass-grain);
 		backdrop-filter: var(--glass-filter);
 		box-shadow: var(--glass-edge);
-		border-right: 1px solid var(--border);
+		border-right: 1px solid var(--chrome-line);
 	}
 	.sidebar-closed .sidebar {
 		border-right-color: transparent;
@@ -274,7 +301,7 @@
 		min-height: 41px;
 		padding: 8px 10px 0;
 		background: var(--part-tabs-bg, transparent);
-		border-bottom: 1px solid var(--border);
+		border-bottom: 1px solid var(--chrome-line);
 	}
 	.tabs {
 		display: flex;

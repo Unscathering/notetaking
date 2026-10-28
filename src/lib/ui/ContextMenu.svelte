@@ -10,7 +10,7 @@
 		/** A row of color dots instead of a normal item. */
 		colors?: { value: string; pick: (color: string) => unknown; current?: string };
 		/** A grid of icons instead of a normal item. */
-		icons?: { pick: (name: IconName | "") => unknown; current?: string };
+		icons?: { pick: (name: IconName | string) => unknown; current?: string };
 	}
 
 	let menu: { x: number; y: number; items: MenuItem[] } | null = $state(null);
@@ -27,13 +27,17 @@
 <script lang="ts">
 	import { scale } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
-	import { FOLDER_ICONS, icon } from "./icons";
+	import { EMOJI, FOLDER_ICONS, icon, isEmoji } from "./icons";
 
 	let { ms }: { ms: number } = $props();
 
 	const SWATCHES = ["", "#e8794a", "#e5a84b", "#d9c64a", "#7fc48b", "#4fb8b0", "#5b9bf0", "#7c8cff", "#b07cf0", "#e46fa8", "#e05d5d", "#9aa0a6"];
 
 	let box: HTMLDivElement | undefined = $state();
+	let iconTab: "icons" | "emoji" = $state("icons");
+
+	/** The first whole emoji someone typed (some are made of several characters). */
+	const firstEmoji = (text: string) => new Intl.Segmenter().segment(text)[Symbol.iterator]().next().value?.segment ?? text;
 	let pos = $state({ x: 0, y: 0 });
 
 	// Keep the menu inside the window.
@@ -60,15 +64,42 @@
 					{#each SWATCHES as c (c)}
 						<button class="swatch" class:is-on={(item.colors.current ?? "") === c} style:--c={c || "transparent"} title={c ? c : "No color"} onclick={() => { menu = null; void item.colors?.pick(c); }}>{#if !c}{@html icon("x", 12)}{/if}</button>
 					{/each}
+					<label class="swatch any" title="Any color" class:is-on={!!item.colors.current && !SWATCHES.includes(item.colors.current)}>
+						<input type="color" value={item.colors.current || "#e8794a"} onchange={(e) => { menu = null; void item.colors?.pick(e.currentTarget.value); }} />
+					</label>
 				</div>
 			{:else if item.icons}
-				<div class="label">{item.label}</div>
+				<div class="label tabs">
+					{item.label}
+					<span class="tab-pick">
+						<button class:is-on={iconTab === "icons"} onclick={() => (iconTab = "icons")}>Icons</button>
+						<button class:is-on={iconTab === "emoji"} onclick={() => (iconTab = "emoji")}>Emoji</button>
+					</span>
+				</div>
 				<div class="icons">
 					<button class="glyph" class:is-on={!item.icons.current} title="No icon" onclick={() => { menu = null; void item.icons?.pick(""); }}>{@html icon("x", 14)}</button>
-					{#each FOLDER_ICONS as name (name)}
-						<button class="glyph" class:is-on={item.icons.current === name} title={name} onclick={() => { menu = null; void item.icons?.pick(name); }}>{@html icon(name, 15)}</button>
-					{/each}
+					{#if iconTab === "icons"}
+						{#each FOLDER_ICONS as name (name)}
+							<button class="glyph" class:is-on={item.icons.current === name} title={name} onclick={() => { menu = null; void item.icons?.pick(name); }}>{@html icon(name, 15)}</button>
+						{/each}
+					{:else}
+						{#each EMOJI as e (e)}
+							<button class="glyph emoji" class:is-on={item.icons.current === e} onclick={() => { menu = null; void item.icons?.pick(e); }}>{e}</button>
+						{/each}
+					{/if}
 				</div>
+				{#if iconTab === "emoji"}
+					<input
+						class="emoji-input"
+						placeholder="Or type / paste any emoji…"
+						value={isEmoji(item.icons.current ?? "") ? item.icons.current : ""}
+						onkeydown={(e) => {
+							e.stopPropagation();
+							const v = e.currentTarget.value.trim();
+							if (e.key === "Enter" && v) { menu = null; void item.icons?.pick(firstEmoji(v)); }
+						}}
+					/>
+				{/if}
 			{:else if item.label === "-"}
 				<hr />
 			{:else}
@@ -85,12 +116,12 @@
 	.menu {
 		position: fixed;
 		z-index: 60;
-		min-width: 210px;
-		max-width: 260px;
+		min-width: 230px;
+		max-width: 270px;
 		padding: 5px;
 		background-color: var(--surface-float);
 		background-image: var(--glass-grain);
-		backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--float-filter);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
 		box-shadow: var(--glass-edge), 0 16px 40px rgba(0, 0, 0, 0.35);
@@ -133,6 +164,62 @@
 		font-weight: 650;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
+	}
+	.icons {
+		grid-template-columns: repeat(8, 1fr) !important;
+		max-height: 184px;
+		overflow-y: auto;
+	}
+	.emoji {
+		font-size: 16px;
+	}
+	.swatch.any {
+		position: relative;
+		background: conic-gradient(#ff5c5c, #e5b84b, #7fc48b, #34c6e0, #7c8cff, #c792ea, #ff5c5c);
+	}
+	.any input {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.tabs {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.tab-pick {
+		display: inline-flex;
+		gap: 2px;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.tab-pick button {
+		padding: 2px 8px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font: 600 11px var(--font-ui);
+		cursor: pointer;
+	}
+	.tab-pick button.is-on {
+		background: var(--accent-soft);
+		color: var(--text);
+	}
+	.emoji-input {
+		width: calc(100% - 16px);
+		margin: 0 8px 8px;
+		padding: 6px 9px;
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) * 0.7);
+		outline: 0;
+		background: var(--bg);
+		color: var(--text);
+		font: 12.5px var(--font-ui);
+	}
+	.emoji-input:focus {
+		border-color: var(--accent);
 	}
 	.swatches,
 	.icons {

@@ -123,7 +123,7 @@ const look = EditorView.theme({
 	".cm-drop-line": { position: "absolute", zIndex: "5", height: "3px", marginTop: "-1.5px", borderRadius: "3px", background: "var(--accent)", opacity: "0", pointerEvents: "none", transition: "top 80ms ease-out, opacity var(--dur) var(--ease)" },
 	".cm-drop-line.is-shown": { opacity: "1" },
 	".cm-dimmed": { opacity: "0.3", transition: "opacity var(--dur) var(--ease)" },
-	".cm-tooltip.cm-tooltip-autocomplete": { padding: "4px", border: "1px solid var(--border)", borderRadius: "var(--radius)", backgroundColor: "var(--surface-float)", backgroundImage: "var(--glass-grain)", backdropFilter: "var(--glass-filter)", boxShadow: "var(--glass-edge), 0 14px 34px rgba(0,0,0,0.35)", fontFamily: "var(--font-ui)" },
+	".cm-tooltip.cm-tooltip-autocomplete": { padding: "4px", border: "1px solid var(--border)", borderRadius: "var(--radius)", backgroundColor: "var(--surface-float)", backgroundImage: "var(--glass-grain)", backdropFilter: "var(--float-filter)", boxShadow: "var(--glass-edge), 0 14px 34px rgba(0,0,0,0.35)", fontFamily: "var(--font-ui)" },
 	".cm-tooltip-autocomplete > ul": { maxHeight: "300px !important", fontFamily: "var(--font-ui) !important" },
 	".cm-tooltip-autocomplete > ul > li": { padding: "6px 10px !important", borderRadius: "calc(var(--radius) * 0.7)", color: "var(--text)", lineHeight: "1.3" },
 	".cm-tooltip-autocomplete > ul > li[aria-selected]": { background: "var(--accent-soft) !important", color: "var(--text) !important" },

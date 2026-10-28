@@ -35,7 +35,7 @@
 		background-image: var(--glass-grain);
 		backdrop-filter: var(--glass-filter);
 		box-shadow: var(--glass-edge);
-		border-right: 1px solid var(--border);
+		border-right: 1px solid var(--chrome-line);
 	}
 	.gap {
 		flex: 1;
@@ -66,7 +66,8 @@
 		background: var(--accent-soft);
 		color: var(--accent);
 	}
-	button.is-on::before {
+	/* The little tab beside the active button, if it's turned on in Appearance > Sidebar. */
+	:global(:root[data-marker="on"]) button.is-on::before {
 		content: "";
 		position: absolute;
 		left: -6px;

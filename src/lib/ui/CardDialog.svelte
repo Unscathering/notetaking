@@ -151,7 +151,7 @@
 		overflow-y: auto;
 		background-color: var(--surface-float);
 		background-image: var(--glass-grain);
-		backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--float-filter);
 		border: 1px solid var(--border);
 		border-radius: calc(var(--radius) * 1.5);
 		box-shadow: var(--glass-edge), 0 30px 80px rgba(0, 0, 0, 0.45);

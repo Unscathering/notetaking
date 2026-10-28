@@ -2,12 +2,14 @@
 	// A little picture of the app wearing a theme: wallpaper, glass, sidebar,
 	// a note with a heading, text, a link and a card.
 	import { themeVars, type Theme } from "../../theme/theme";
+	import { mediaUrl } from "../../theme/media.svelte";
 
 	interface Props {
 		t: Theme;
 	}
 	let { t }: Props = $props();
 
+	const video = $derived(t.background.kind === "video" && t.background.media ? mediaUrl(t.background.media) : "");
 	const style = $derived(
 		Object.entries(themeVars(t))
 			// The full-size light bending is too strong for a thumbnail.
@@ -16,8 +18,8 @@
 	);
 </script>
 
-<div class="mini" {style} data-h={t.headings.style} class:floating={t.glass.floating}>
-	<div class="wall"></div>
+<div class="mini" {style} data-h={t.headings.style} class:floating={t.glass.floating} class:seamless={t.glass.seamless}>
+	<div class="wall">{#if video}<video src={video} autoplay muted loop playsinline></video>{/if}</div>
 	<div class="frame">
 		<div class="rib glass"><i class="on"></i><i></i><i></i><i></i></div>
 		<div class="side glass">
@@ -53,6 +55,13 @@
 		background: var(--wallpaper);
 		filter: blur(calc(var(--wallpaper-blur) * 0.35));
 	}
+	.wall video {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
 	.wall::after {
 		content: "";
 		position: absolute;
@@ -79,6 +88,10 @@
 		background-image: var(--glass-grain);
 		backdrop-filter: var(--glass-filter);
 		box-shadow: var(--glass-edge);
+	}
+	.seamless .rib,
+	.seamless .side {
+		border-right-color: transparent;
 	}
 	.rib {
 		display: flex;

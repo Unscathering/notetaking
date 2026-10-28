@@ -1,11 +1,12 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "What the Basalt window may do: pick a folder, and read and write the notes inside it.",
+	"description": "What the Basalt window may do: pick a folder, read and write the notes inside it, and open links in the browser.",
 	"windows": ["main"],
 	"permissions": [
 		"core:default",
 		"dialog:allow-open",
+		"opener:default",
 		"fs:allow-read-dir",
 		"fs:allow-read-text-file",
 		"fs:allow-read-file",

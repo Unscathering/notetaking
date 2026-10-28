@@ -11,7 +11,8 @@
 	import { ws } from "../workspace.svelte";
 	import { isBoardText } from "../board";
 	import { showMenu, type MenuItem } from "./ContextMenu.svelte";
-	import { icon, type IconName } from "./icons";
+	import { icon, isEmoji, type IconName } from "./icons";
+	import { theme } from "../theme/store.svelte";
 	import FileTree from "./FileTree.svelte";
 
 	interface Props {
@@ -23,6 +24,17 @@
 
 	const label = (e: CaveEntry) => (e.kind === "file" ? e.name.replace(/\.md$/i, "") : e.name);
 	const look = (e: CaveEntry) => ws.meta.looks[e.path] ?? {};
+	const sb = $derived(theme.sidebar);
+	const notesIn = (e: CaveEntry): number => (e.children ?? []).reduce((n, c) => n + (c.kind === "file" ? 1 : notesIn(c)), 0);
+	/** The icon a row shows: one picked for it, or the sidebar's usual one. */
+	function iconFor(e: CaveEntry): string {
+		const picked = look(e).icon ?? "";
+		if (e.kind === "folder") {
+			if (sb.folderIcons === "none") return "";
+			return picked || (sb.folderIcons === "always" ? (ws.openFolders.has(e.path) ? "folderOpen" : "folder") : "");
+		}
+		return picked || (isBoardText(ws.texts.get(e.path) ?? "") ? "board" : sb.fileIcons ? "file" : "");
+	}
 
 	function toggle(path: string) {
 		if (ws.openFolders.has(path)) ws.openFolders.delete(path);
@@ -116,9 +128,10 @@
 	};
 </script>
 
-<ul class="tree" style:--depth={depth}>
+<ul class="tree color-{sb.colorOn}" class:no-arrows={!sb.arrows} class:no-guides={!sb.guides} style:--depth={depth}>
 	{#each entries as entry, i (entry.path)}
 		{@const l = look(entry)}
+		{@const ico = iconFor(entry)}
 		{@const drop = target?.path === entry.path ? target.where : null}
 		<li class:is-dragging={dragging === entry.path}>
 			{#if ws.renaming === entry.path}
@@ -142,9 +155,10 @@
 					ondrop={(e) => ondrop(e, entry, i)}
 					{ondragend}
 				>
-					<span class="chevron">{@html icon("chevron", 14)}</span>
-					{#if l.icon}<span class="ico">{@html icon(l.icon as IconName, 15)}</span>{/if}
+					{#if sb.arrows}<span class="chevron">{@html icon("chevron", 14)}</span>{/if}
+					{#if ico}<span class="ico" class:emoji={isEmoji(ico)}>{#if isEmoji(ico)}{ico}{:else}{@html icon(ico as IconName, 15)}{/if}</span>{/if}
 					<span class="name">{label(entry)}</span>
+					{#if sb.counts}<span class="count">{notesIn(entry)}</span>{/if}
 				</button>
 				{#if ws.openFolders.has(entry.path) && entry.children}
 					<div transition:slide={{ duration: ms, easing: cubicOut }} class="kids" style:--tint={l.color}>
@@ -167,7 +181,7 @@
 					ondrop={(e) => ondrop(e, entry, i)}
 					{ondragend}
 				>
-					{#if l.icon || isBoardText(ws.texts.get(entry.path) ?? "")}<span class="ico">{@html icon((l.icon as IconName) || "board", 15)}</span>{/if}
+					{#if ico}<span class="ico" class:emoji={isEmoji(ico)}>{#if isEmoji(ico)}{ico}{:else}{@html icon(ico as IconName, 15)}{/if}</span>{/if}
 					<span class="name">{label(entry)}</span>
 					{#if ws.meta.home === entry.path}<span class="home" title="Home page">{@html icon("home", 13)}</span>{/if}
 				</button>
@@ -194,13 +208,13 @@
 		align-items: center;
 		gap: 6px;
 		width: 100%;
-		padding: calc(5px * var(--density)) 10px calc(5px * var(--density)) calc(10px + var(--depth) * 14px);
+		padding: calc(5px * var(--density)) 10px calc(5px * var(--density)) calc(10px + var(--depth) * var(--tree-indent));
 		border: 0;
 		border-radius: calc(var(--radius) * 0.75);
 		background: transparent;
 		color: var(--part-sidebar-text, var(--muted));
 		font: inherit;
-		font-size: var(--part-sidebar-size, 14px);
+		font-size: var(--part-sidebar-size, var(--tree-size));
 		text-align: left;
 		cursor: pointer;
 		transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
@@ -214,15 +228,45 @@
 		color: var(--text);
 	}
 	.folder {
+		color: var(--text);
+		font-weight: var(--tree-folder-weight);
+	}
+	/* Where a folder's color shows: its icon, its name, both, or the whole row. */
+	.color-name .folder,
+	.color-both .folder {
 		color: var(--tint, var(--text));
-		font-weight: 600;
+	}
+	.color-name .folder .ico {
+		color: var(--muted);
+	}
+	.color-row .folder {
+		background: color-mix(in srgb, var(--tint, transparent) 16%, transparent);
+	}
+	.color-row .folder:hover {
+		background: color-mix(in srgb, var(--tint, var(--text)) 24%, transparent);
+	}
+	.color-row .folder,
+	.color-icon .folder {
+		color: var(--text);
+	}
+	.count {
+		flex: none;
+		min-width: 20px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: var(--hover);
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 18px;
+		text-align: center;
 	}
 	/* Where a dragged item will land. */
 	.drop-before::after,
 	.drop-after::after {
 		content: "";
 		position: absolute;
-		left: calc(10px + var(--depth) * 14px);
+		left: calc(10px + var(--depth) * var(--tree-indent));
 		right: 6px;
 		height: 2px;
 		border-radius: 2px;
@@ -248,7 +292,10 @@
 		transform: rotate(90deg);
 	}
 	.file {
-		padding-left: calc(30px + var(--depth) * 14px);
+		padding-left: calc(30px + var(--depth) * var(--tree-indent));
+	}
+	.no-arrows .file {
+		padding-left: calc(10px + var(--depth) * var(--tree-indent));
 	}
 	.ico {
 		display: inline-flex;
@@ -256,6 +303,15 @@
 	}
 	.file .ico {
 		margin-left: -20px;
+	}
+	.no-arrows .file .ico {
+		margin-left: 0;
+	}
+	.ico.emoji {
+		width: 16px;
+		justify-content: center;
+		font-size: 14px;
+		line-height: 1;
 	}
 	.name {
 		flex: 1;
@@ -281,12 +337,15 @@
 		position: relative;
 	}
 	/* A soft line in the folder's color down its open contents. */
+	.no-guides .kids::before {
+		display: none;
+	}
 	.kids::before {
 		content: "";
 		position: absolute;
 		top: 2px;
 		bottom: 4px;
-		left: calc(17px + var(--depth) * 14px);
+		left: calc(17px + var(--depth) * var(--tree-indent));
 		width: 1.5px;
 		border-radius: 2px;
 		background: color-mix(in srgb, var(--tint, var(--muted)) 45%, transparent);

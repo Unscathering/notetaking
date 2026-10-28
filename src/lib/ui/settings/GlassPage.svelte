@@ -1,27 +1,31 @@
 <script lang="ts">
-	import { themeVars, type Material } from "../../theme/theme";
+	import { GLASS_DEFAULTS, themeVars, type Material } from "../../theme/theme";
 	import { theme } from "../../theme/store.svelte";
 	import MiniApp from "./MiniApp.svelte";
 	import Slider from "./Slider.svelte";
 	import Switch from "./Switch.svelte";
 
-	const MATERIALS: Array<{ id: Material; name: string; about: string; tint: number; blur: number }> = [
-		{ id: "solid", name: "Solid", about: "Plain, opaque panels. The lightest on your computer.", tint: 100, blur: 0 },
-		{ id: "glass", name: "Glass", about: "Clear panels with a soft blur behind them.", tint: 45, blur: 16 },
-		{ id: "frosted", name: "Frosted glass", about: "Thick, milky blur with a fine grain, like a frosted window.", tint: 55, blur: 34 },
-		{ id: "liquid", name: "Liquid glass", about: "Bends the light behind it, with bright, wet-looking edges.", tint: 35, blur: 6 },
+	const MATERIALS: Array<{ id: Material; name: string; about: string }> = [
+		{ id: "solid", name: "Solid", about: "Plain, opaque panels. The lightest on your computer." },
+		{ id: "clear", name: "Transparent", about: "Barely-there panels with no blur. Your background shows through everything." },
+		{ id: "glass", name: "Glass", about: "Clear panels with a soft blur behind them." },
+		{ id: "frosted", name: "Frosted glass", about: "Thick, milky blur with a fine grain, like a frosted window." },
+		{ id: "liquid", name: "Liquid glass", about: "Bends the light behind it, with bright, wet-looking edges." },
 	];
 
 	/** The look of a sample chip in a material, using the theme's own colors. */
 	const sample = (m: (typeof MATERIALS)[number]) => {
-		const v = themeVars({ ...theme, glass: { ...theme.glass, material: m.id, tint: m.tint, blur: m.blur } });
+		const v = themeVars({ ...theme, glass: { ...theme.glass, ...GLASS_DEFAULTS[m.id] } });
 		return `background-color:${v["--surface-panel"]};background-image:${v["--glass-grain"]};backdrop-filter:${v["--glass-filter"].replace("basalt-liquid", "basalt-liquid-mini")};box-shadow:${v["--glass-edge"]}`;
 	};
 
 	function pick(m: (typeof MATERIALS)[number]) {
-		Object.assign(theme.glass, { material: m.id, tint: m.tint, blur: m.blur });
+		const was = theme.glass.material;
+		Object.assign(theme.glass, GLASS_DEFAULTS[m.id]);
 		if (m.id === "liquid") theme.glass.floating = true;
-		if (m.id !== "solid" && theme.glass.page === 100) theme.glass.page = 60;
+		// Transparent looks best as one seamless sheet; going back to solid brings the lines back.
+		if (m.id === "clear") theme.glass.seamless = true;
+		else if (was === "clear") theme.glass.seamless = false;
 	}
 
 	// Sliders speak in "see-through", the opposite of how much color covers.
@@ -53,7 +57,7 @@
 <section class="st-section">
 	<h3 class="st-h">Material</h3>
 	<p class="st-sub">What the sidebar, menus, dialogs and board lists are made of.</p>
-	<div class="st-grid" style:--min="180px">
+	<div class="st-grid" style:--min="160px">
 		{#each MATERIALS as m (m.id)}
 			<button class="st-card" class:is-on={theme.glass.material === m.id} onclick={() => pick(m)}>
 				<span class="stage">
@@ -67,11 +71,17 @@
 	</div>
 </section>
 
-<section class="st-section">
+<section class="st-section switches">
+	<Switch title="Seamless" about="No lines between the sidebar, command bar and note, so the whole window reads as one sheet." ico="layout" bind:checked={theme.glass.seamless} />
 	<Switch title="Floating panels" about="Each part of the window becomes its own rounded island, with gaps between them." ico="layers" bind:checked={theme.glass.floating} />
 </section>
 
 <style>
+	.switches {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
 	.stage {
 		position: relative;
 		display: grid;

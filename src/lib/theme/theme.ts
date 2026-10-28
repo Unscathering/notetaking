@@ -1,10 +1,13 @@
 // A theme is every look-and-feel choice in one small object. The app reads all
 // of its colors, fonts, sizes, corners and motion from CSS variables set here,
 // so changing a value restyles everything at once, with no CSS needed.
+import { mediaUrl } from "./media.svelte";
 
 export type MotionStyle = "smooth" | "snappy" | "bouncy" | "off";
 /** What the panels are made of. */
-export type Material = "solid" | "glass" | "frosted" | "liquid";
+export type Material = "solid" | "clear" | "glass" | "frosted" | "liquid";
+/** Where a folder's color shows in the sidebar. */
+export type FolderColorOn = "icon" | "name" | "both" | "row";
 export type HeadingStyle = "plain" | "underline" | "bar" | "accent" | "gradient" | "caps";
 
 export interface Theme {
@@ -53,11 +56,15 @@ export interface Theme {
 		bannerHeight: number;
 	};
 	background: {
-		kind: "none" | "wallpaper" | "image";
+		kind: "none" | "wallpaper" | "image" | "video";
 		/** One of WALLPAPERS when kind is "wallpaper". */
 		wallpaper: string;
-		/** A picture of your own (stored inside the theme) when kind is "image". */
+		/** An older picture of your own, stored inside the theme itself. */
 		image: string;
+		/** A picture, GIF or video of your own, kept on this computer (see media.svelte.ts). */
+		media: string;
+		/** Whether `media` is a still or animated picture, or a video. */
+		mediaKind: "image" | "video";
 		/** Blur in pixels. */
 		blur: number;
 		/** 0 to 100: how much the theme's background color is laid over the picture. */
@@ -73,6 +80,28 @@ export interface Theme {
 		page: number;
 		/** Panels float as rounded islands with gaps between them. */
 		floating: boolean;
+		/** No lines between the sidebar, command bar and note: one seamless sheet. */
+		seamless: boolean;
+	};
+	sidebar: {
+		/** The little colored tab beside the active button in the command bar. */
+		marker: boolean;
+		/** Arrows beside folders. */
+		arrows: boolean;
+		/** "always": every folder shows a folder icon; "custom": only icons you picked; "none": no folder icons. */
+		folderIcons: "always" | "custom" | "none";
+		/** A small page icon beside every note. */
+		fileIcons: boolean;
+		/** Lines down the inside of open folders. */
+		guides: boolean;
+		colorOn: FolderColorOn;
+		/** How many notes are inside each folder. */
+		counts: boolean;
+		folderWeight: number;
+		/** Text size in pixels. */
+		size: number;
+		/** How far each level steps in, in pixels. */
+		indent: number;
 	};
 	motion: {
 		/** 1 is normal; higher is faster. */
@@ -119,8 +148,19 @@ interface PresetBits {
 	shape?: Partial<Theme["shape"]>;
 	background?: Partial<Theme["background"]>;
 	glass?: Partial<Theme["glass"]>;
+	sidebar?: Partial<Theme["sidebar"]>;
 	motion?: Partial<Theme["motion"]>;
 }
+
+export const DEFAULT_SIDEBAR: Theme["sidebar"] = { marker: false, arrows: true, folderIcons: "custom", fileIcons: false, guides: true, colorOn: "both", counts: false, folderWeight: 600, size: 14, indent: 14 };
+
+/** Ready-made sidebar looks for the Sidebar page. */
+export const SIDEBAR_STYLES: Array<{ name: string; about: string; looks: Theme["sidebar"] }> = [
+	{ name: "Classic", about: "Arrows, colored folder names and guide lines.", looks: DEFAULT_SIDEBAR },
+	{ name: "Minimal", about: "Just a colored folder icon and a quiet name.", looks: { ...DEFAULT_SIDEBAR, arrows: false, folderIcons: "always", guides: false, colorOn: "icon", folderWeight: 400, size: 13.5 } },
+	{ name: "Outline", about: "Folder and page icons, like a file explorer.", looks: { ...DEFAULT_SIDEBAR, folderIcons: "always", fileIcons: true, colorOn: "icon", folderWeight: 500, guides: true } },
+	{ name: "Bold", about: "Big tinted rows you can't miss, with counts.", looks: { ...DEFAULT_SIDEBAR, folderIcons: "always", colorOn: "row", counts: true, folderWeight: 650, size: 14.5, guides: false } },
+];
 
 const base = (name: string, colors: Theme["colors"], bits: PresetBits = {}): Theme => ({
 	name,
@@ -128,17 +168,27 @@ const base = (name: string, colors: Theme["colors"], bits: PresetBits = {}): The
 	type: { uiFont: SANS, editorFont: SANS, codeFont: MONO, size: 16, lineHeight: 1.65, width: 72, headingScale: 1.25, ...bits.type },
 	headings: { style: "plain", font: "", weight: 700, ...bits.headings },
 	shape: { radius: 8, density: 1, sidebarWidth: 260, bannerHeight: 220, ...bits.shape },
-	background: { kind: "none", wallpaper: "aurora", image: "", blur: 0, fade: 30, ...bits.background },
-	glass: { material: "solid", tint: 70, blur: 18, page: 100, floating: false, ...bits.glass },
+	background: { kind: "none", wallpaper: "aurora", image: "", media: "", mediaKind: "image", blur: 0, fade: 30, ...bits.background },
+	glass: { material: "solid", tint: 70, blur: 18, page: 100, floating: false, seamless: false, ...bits.glass },
+	sidebar: { ...DEFAULT_SIDEBAR, ...bits.sidebar },
 	motion: { speed: 1, style: "smooth", ...bits.motion },
 });
+
+/** Where each material starts when you pick it. */
+export const GLASS_DEFAULTS: Record<Material, { material: Material; tint: number; blur: number; page: number }> = {
+	solid: { material: "solid", tint: 100, blur: 0, page: 100 },
+	clear: { material: "clear", tint: 12, blur: 0, page: 10 },
+	glass: { material: "glass", tint: 45, blur: 16, page: 55 },
+	frosted: { material: "frosted", tint: 55, blur: 34, page: 60 },
+	liquid: { material: "liquid", tint: 35, blur: 6, page: 55 },
+};
 
 /** A glass theme over one of the built-in wallpapers. */
 const glassy = (name: string, colors: Theme["colors"], wallpaper: string, material: Material, bits: PresetBits = {}) =>
 	base(name, colors, {
 		...bits,
 		background: { kind: "wallpaper", wallpaper, blur: 0, fade: 25, ...bits.background },
-		glass: { material, tint: material === "liquid" ? 35 : material === "frosted" ? 55 : 45, blur: material === "frosted" ? 34 : 16, page: 55, floating: material === "liquid", ...bits.glass },
+		glass: { ...GLASS_DEFAULTS[material], floating: material === "liquid", seamless: material === "clear", ...bits.glass },
 		shape: { radius: material === "liquid" ? 14 : 10, ...bits.shape },
 	});
 
@@ -172,6 +222,7 @@ export const PRESETS: Array<Theme & { group: PresetGroup }> = [
 	["Forest Frost", { bg: "#0b1710", panel: "#102016", raised: "#16291d", border: "#24402e", text: "#e3f1e5", muted: "#8fae96", accent: "#b9d665", onAccent: "#141b02", heading: "#ffffff", link: "#cbe38a", code: "#8fd4b0" }, "forest", "frosted"],
 	["Bloom Frost", { bg: "#fff4f3", panel: "#ffffff", raised: "#ffffff", border: "#f1d5da", text: "#3b2830", muted: "#9a7f88", accent: "#e0567f", onAccent: "#ffffff", heading: "#2a1820", link: "#c9406a", code: "#8f5bb0" }, "bloom", "frosted", { shape: { radius: 14 } }],
 	["Lilac Liquid", { bg: "#f6f2ff", panel: "#ffffff", raised: "#ffffff", border: "#ddd3f3", text: "#2e2944", muted: "#8a83a6", accent: "#7a5cf0", onAccent: "#ffffff", heading: "#1c1730", link: "#6447d8", code: "#c0508f" }, "lilac", "liquid"],
+	["Night Clear", { bg: "#0d0f1a", panel: "#141726", raised: "#1c2033", border: "#2c3150", text: "#e9ecf8", muted: "#9aa1c2", accent: "#9db4ff", onAccent: "#0b0f24", heading: "#ffffff", link: "#b8c8ff", code: "#c8b8ff" }, "nebula", "clear", { background: { fade: 40, blur: 2 }, sidebar: { arrows: false, folderIcons: "always", guides: false, colorOn: "icon", folderWeight: 400, size: 13.5 }, type: { codeFont: MONO } }],
 	["Sky Glass", { bg: "#f1f7ff", panel: "#ffffff", raised: "#ffffff", border: "#d3e2f5", text: "#1e2b3c", muted: "#7b8ba1", accent: "#1f8ef1", onAccent: "#ffffff", heading: "#0d1826", link: "#1677d2", code: "#2c9a7a" }, "sky", "glass"],
 ].map((row, i) => {
 	const group: PresetGroup = i < 10 ? "Dark" : i < 17 ? "Light" : "Glass";
@@ -198,31 +249,39 @@ const pct = (n: number) => `${Math.round(Math.min(100, Math.max(0, n)))}%`;
 const mix = (color: string, amount: number) => (amount >= 100 ? color : `color-mix(in srgb, ${color} ${pct(amount)}, transparent)`);
 const GRAIN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`;
 
-/** The background picture as CSS, or "none". */
+/** The background picture as CSS, or "none" (videos are drawn separately). */
 export function wallpaperCss(t: Theme): string {
 	const b = t.background;
 	if (b.kind === "wallpaper") return WALLPAPERS[b.wallpaper]?.css ?? "none";
-	if (b.kind === "image" && b.image) return `url("${b.image}") center / cover no-repeat`;
+	if (b.kind === "image") {
+		const url = b.media ? mediaUrl(b.media) : b.image;
+		return url ? `url("${url}") center / cover no-repeat` : "none";
+	}
 	return "none";
 }
+
+/** Whether something sits behind the panels: a picture, GIF or video. */
+export const hasBackground = (t: Theme) => t.background.kind === "video" ? !!t.background.media : wallpaperCss(t) !== "none";
 
 /** Every CSS variable a theme sets. Also used to paint the little theme pictures. */
 export function themeVars(t: Theme): Record<string, string> {
 	const c = t.colors, g = t.glass;
 	const light = isLight(t);
-	const see = wallpaperCss(t) !== "none";
+	const see = hasBackground(t);
 	const solid = g.material === "solid";
 	// How much panel color covers what's behind; solid panels cover it all.
 	const tint = solid ? 100 : g.tint;
 	const shine = "255,255,255";
 	const filters: Record<Material, string> = {
 		solid: "none",
+		clear: g.blur > 0 ? `blur(${g.blur}px)` : "none",
 		glass: `blur(${g.blur}px) saturate(1.3)`,
 		frosted: `blur(${g.blur}px) saturate(1.6) brightness(${light ? 1.04 : 1.08})`,
 		liquid: `url(#basalt-liquid) blur(${Math.max(1, g.blur * 0.25)}px) saturate(1.9) brightness(${light ? 1.05 : 1.12})`,
 	};
 	const edges: Record<Material, string> = {
 		solid: "0 0 0 transparent",
+		clear: "0 0 0 transparent",
 		glass: `inset 0 1px 0 rgba(${shine},${light ? 0.6 : 0.08})`,
 		frosted: `inset 0 1px 0 rgba(${shine},${light ? 0.7 : 0.14}), inset 0 0 0 1px rgba(${shine},${light ? 0.35 : 0.05})`,
 		liquid: `inset 1.5px 1.5px 0 -0.5px rgba(${shine},${light ? 0.9 : 0.4}), inset -1px -1px 0 -0.5px rgba(${shine},${light ? 0.6 : 0.18}), inset 0 0 18px rgba(${shine},${light ? 0.35 : 0.07}), 0 10px 34px rgba(0,0,0,${light ? 0.12 : 0.32})`,
@@ -248,13 +307,19 @@ export function themeVars(t: Theme): Record<string, string> {
 		"--surface-page": see ? mix(c.bg, g.page) : c.bg,
 		"--surface-panel": see || !solid ? mix(c.panel, tint) : c.panel,
 		// Menus and pop-ups float over text, so they stay a little more covered.
-		"--surface-float": solid ? c.raised : mix(c.raised, Math.max(tint, light ? 62 : 55)),
+		"--surface-float": solid ? c.raised : mix(c.raised, Math.max(tint, g.material === "clear" ? 72 : light ? 62 : 55)),
 		"--surface-card": solid ? c.raised : mix(c.raised, Math.max(tint, 72)),
 		"--glass-filter": filters[g.material],
+		// Pop-ups sit over text, so even transparent ones blur what's behind a little.
+		"--float-filter": g.material === "clear" ? `blur(${Math.max(14, g.blur)}px) saturate(1.2)` : filters[g.material],
 		"--glass-edge": edges[g.material],
 		"--glass-grain": g.material === "frosted" ? GRAIN : "none",
+		"--chrome-line": g.seamless ? "transparent" : solid ? c.border : mix(c.border, light ? 70 : 60),
 		"--float-gap": g.floating ? "8px" : "0px",
 		"--float-radius": g.floating ? `${Math.max(10, t.shape.radius * 1.5)}px` : "0px",
+		"--tree-size": `${t.sidebar.size}px`,
+		"--tree-indent": `${t.sidebar.indent}px`,
+		"--tree-folder-weight": String(t.sidebar.folderWeight),
 	};
 }
 
@@ -263,6 +328,8 @@ export function applyTheme(t: Theme, root: HTMLElement = document.documentElemen
 	for (const [k, v] of Object.entries(themeVars(t))) root.style.setProperty(k, v);
 	root.dataset.headings = t.headings.style;
 	root.dataset.material = t.glass.material;
+	root.dataset.marker = t.sidebar.marker ? "on" : "off";
+	root.dataset.light = isLight(t) ? "yes" : "no";
 	// Light themes get light scrollbars and form controls.
 	root.style.colorScheme = isLight(t) ? "light" : "dark";
 }

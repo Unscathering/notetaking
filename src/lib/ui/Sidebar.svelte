@@ -18,6 +18,7 @@
 		</button>
 		<button class="icon" onclick={() => ws.newNote()} title="New note (Ctrl+N)">{@html icon("pencil")}</button>
 		<button class="icon" onclick={() => ws.newFolder()} title="New folder">{@html icon("folderPlus")}</button>
+		<button class="icon" onclick={() => ws.openFolders.clear()} title="Close all folders">{@html icon("collapse")}</button>
 	</header>
 	{#if ws.panel === "files"}
 		<!-- Dropping on the empty space below the tree moves a note to the top level. -->

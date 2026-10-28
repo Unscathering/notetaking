@@ -10,7 +10,7 @@ function load(): Theme {
 		// Fill in anything a newer version added since the theme was saved.
 		if (saved) {
 			const d = cloneTheme(DEFAULT_THEME);
-			return { ...d, ...saved, colors: { ...d.colors, ...saved.colors }, type: { ...d.type, ...saved.type }, headings: { ...d.headings, ...saved.headings }, shape: { ...d.shape, ...saved.shape }, background: { ...d.background, ...saved.background }, glass: { ...d.glass, ...saved.glass }, motion: { ...d.motion, ...saved.motion } };
+			return { ...d, ...saved, colors: { ...d.colors, ...saved.colors }, type: { ...d.type, ...saved.type }, headings: { ...d.headings, ...saved.headings }, shape: { ...d.shape, ...saved.shape }, background: { ...d.background, ...saved.background }, glass: { ...d.glass, ...saved.glass }, sidebar: { ...d.sidebar, ...saved.sidebar }, motion: { ...d.motion, ...saved.motion } };
 		}
 	} catch {
 		// A broken saved theme falls back to the default.

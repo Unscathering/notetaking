@@ -3,6 +3,8 @@
 import type { IconName } from "./ui/icons";
 import { ws } from "./workspace.svelte";
 import { writing } from "./writing.svelte";
+import { checkForUpdate, updates } from "./updates.svelte";
+import { inDesktopApp } from "./cave";
 
 export interface Command {
 	id: string;
@@ -38,6 +40,16 @@ export const COMMANDS: Command[] = [
 	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
 	{ id: "close-tab", label: "Close tab", icon: "x", keys: "Ctrl+W", run: () => ws.active && ws.closeTab(ws.active) },
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.active && ws.setHome(ws.active) },
+	{
+		id: "updates",
+		label: "Check for updates",
+		icon: "download",
+		run: async () => {
+			if (!inDesktopApp) return alert("Updates are for the desktop app.");
+			await checkForUpdate(false);
+			if (!updates.version) alert(updates.reached ? `You have the newest Basalt (${updates.current}).` : "Couldn't reach GitHub to check. Try again later.");
+		},
+	},
 	{ id: "palette", label: "Command palette", icon: "command", keys: "Ctrl+P", run: () => (ws.modal = ws.modal === "palette" ? null : "palette") },
 ];
 

@@ -19,6 +19,7 @@
 	import GlassPage from "./settings/GlassPage.svelte";
 	import TextPage from "./settings/TextPage.svelte";
 	import LayoutPage from "./settings/LayoutPage.svelte";
+	import SidebarPage from "./settings/SidebarPage.svelte";
 	import MotionPage from "./settings/MotionPage.svelte";
 	import WritingPage from "./settings/WritingPage.svelte";
 
@@ -34,6 +35,7 @@
 		{ id: "background", label: "Background", ico: "image", title: "Background", about: "Put a picture behind everything.", page: BackgroundPage },
 		{ id: "glass", label: "Glass", ico: "sparkles", title: "Glass", about: "Make panels see-through: clear, frosted or liquid glass.", page: GlassPage },
 		{ id: "text", label: "Text & headings", ico: "type", title: "Text & headings", about: "Fonts, sizes, spacing and how headings stand out.", page: TextPage },
+		{ id: "sidebar", label: "Sidebar", ico: "folder", title: "Sidebar", about: "How your folders and notes look in the list on the left.", page: SidebarPage },
 		{ id: "layout", label: "Layout", ico: "layout", title: "Layout", about: "Corners, spacing and the size of things.", page: LayoutPage },
 		{ id: "motion", label: "Motion", ico: "zap", title: "Motion", about: "How the app moves. Every example is playing live.", page: MotionPage },
 		{ id: "writing", label: "Writing", ico: "pencil", title: "Writing", about: "Helpers for when you're writing.", page: WritingPage },
@@ -135,7 +137,7 @@
 		border-radius: calc(var(--radius) * 1.6 + 4px);
 		background-color: var(--surface-float);
 		background-image: var(--glass-grain);
-		backdrop-filter: var(--glass-filter);
+		backdrop-filter: var(--float-filter);
 		box-shadow: var(--glass-edge), 0 40px 100px rgba(0, 0, 0, 0.45);
 		transition: opacity var(--dur) var(--ease), scale var(--dur) var(--ease);
 	}
