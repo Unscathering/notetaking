@@ -8,6 +8,7 @@
 	import Palette from "./lib/ui/Palette.svelte";
 	import CaveSwitcher from "./lib/ui/CaveSwitcher.svelte";
 	import Settings from "./lib/ui/Settings.svelte";
+	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import { icon } from "./lib/ui/icons";
 	import { COMMANDS, keyName } from "./lib/commands";
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
@@ -93,6 +94,8 @@
 		</footer>
 	</main>
 </div>
+
+<ContextMenu {ms} />
 
 {#if ws.modal === "settings"}
 	<Settings {ms} onclose={() => (ws.modal = null)} />

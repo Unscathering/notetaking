@@ -18,7 +18,15 @@
 		<button class="icon" onclick={() => ws.newFolder()} title="New folder">{@html icon("folderPlus")}</button>
 	</header>
 	{#if ws.panel === "files"}
-		<nav class="files">
+		<!-- Dropping on the empty space below the tree moves a note to the top level. -->
+		<nav
+			class="files"
+			ondragover={(e) => e.preventDefault()}
+			ondrop={(e) => {
+				const path = e.dataTransfer?.getData("text/plain");
+				if (path) void ws.move(path, "", null);
+			}}
+		>
 			<FileTree entries={ws.tree} {ms} />
 		</nav>
 	{:else}

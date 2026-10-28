@@ -31,6 +31,8 @@ class Workspace {
 	sidebarOpen = $state(true);
 	modal: Modal | null = $state(null);
 	saving = $state(false);
+	/** The sidebar item being renamed in place. */
+	renaming: string | null = $state(null);
 	private timers = new Map<string, number>();
 
 	/** Notes in sidebar order. */
