@@ -55,3 +55,45 @@ export function warmUp() {
 
 /** What the editor's writing help needs from the AI. */
 export const helpHooks: WritingHelpHooks = { helperReady, warmUp, improve, checkAsYouWrite: () => writing.aiCheck };
+
+// ---- How fast is it on this PC? ----
+
+const SAMPLE = "yesterday me and my freind goes to the libary to study for are test, but it was closed so we just walked around the park instead and talked about the the project we has to finish by friday.";
+
+export interface SpeedResult {
+	/** Seconds to wake the engine (0 if it was already awake). */
+	wake: number;
+	/** Seconds for one paragraph's grammar check, start to finish. */
+	paragraph: number;
+	/** Words written per second. */
+	wordsPerSecond: number;
+	/** How it went, in plain words. */
+	verdict: string;
+}
+
+/** Times a grammar check of one paragraph, the way writing help does it. */
+export async function speedTest(): Promise<SpeedResult> {
+	const t0 = performance.now();
+	const asleep = !ai.running;
+	await wake();
+	const wakeS = asleep ? (performance.now() - t0) / 1000 : 0;
+	const t1 = performance.now();
+	let text = "";
+	let perSecond = 0;
+	await stream(request("grammar", [SAMPLE]), (d) => {
+		text += (d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? "";
+		// The engine reports its own speed at the end, in tokens (about ¾ of a word each).
+		const timings = d.timings as { predicted_per_second?: number } | undefined;
+		if (timings?.predicted_per_second) perSecond = timings.predicted_per_second * 0.75;
+	});
+	const paragraph = (performance.now() - t1) / 1000;
+	const words = text.split(/\s+/).filter(Boolean).length;
+	const wordsPerSecond = perSecond || words / Math.max(paragraph, 0.1);
+	const verdict =
+		paragraph <= 4
+			? "Fast. Grammar checks feel quick, and checking as you write works well."
+			: paragraph <= 10
+				? "Fine for checking a selection. A long note takes a while, so check it in parts."
+				: "Slow on this PC with this model. For writing help, try a smaller model (Fast or Tiny) under AI models.";
+	return { wake: wakeS, paragraph, wordsPerSecond, verdict };
+}

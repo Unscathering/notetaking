@@ -3,6 +3,11 @@
 // turn ends, the plan waits for the user: only checked, approved changes are
 // made, and the whole plan can be undone with one click.
 //
+// Chats are saved in .basalt/ai/chats/ (one file each, with a list in
+// .basalt/ai/chats.json), so they can be reopened. A chat can belong to a
+// project: a folder of the cave. Its chats share a small project memory
+// (.basalt/ai/projects/), and the AI looks in that folder first.
+//
 // Memory: a note at .basalt/ai/memory.md inside the cave. It's hidden from
 // the sidebar and search; only the user (through the memory button) and the
 // AI read it. After a few messages, and when a chat ends, the AI updates it
@@ -13,6 +18,9 @@ import { CONTEXT, stream } from "./engine.svelte";
 import { WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
 
 export const MEMORY_PATH = ".basalt/ai/memory.md";
+const CHATS = ".basalt/ai/chats.json";
+const chatPath = (id: string) => `.basalt/ai/chats/${id}.json`;
+const projectPath = (folder: string) => `.basalt/ai/projects/${folder.replace(/\//g, " » ")}.md`;
 const MAX_ROUNDS = 10;
 /** New memory notes allowed per message. */
 const MAX_MEMORIES = 2;
@@ -31,6 +39,17 @@ export interface Plan {
 	status: "waiting" | "doing" | "done" | "skipped" | "undone";
 	undo: Array<() => Promise<unknown>>;
 	note?: string;
+	/** Reopened from a saved chat: its undo was left behind when Basalt closed. */
+	reopened?: boolean;
+}
+
+/** A saved chat, as the list shows it. */
+export interface ChatInfo {
+	id: string;
+	title: string;
+	/** The project folder, or "". */
+	project: string;
+	updated: number;
 }
 
 /** One thing the AI did while working, like "Read “Garden plan”". The arrow shows `detail`. */
@@ -58,11 +77,21 @@ let sinceMemory = 0;
 /** Where the current message starts in `history`. */
 let turnStart = 0;
 
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 export const chat = $state({
+	id: newId(),
+	/** The project folder this chat belongs to, or "". */
+	project: "",
+	projectMemory: "",
 	messages: [] as ChatMessage[],
 	busy: false,
 	memory: "",
 	memoryLoaded: false,
+	/** Saved chats, newest first. */
+	list: [] as ChatInfo[],
+	/** The cave the chats and memory belong to. */
+	caveId: "",
 });
 
 // ---- Memory ----
@@ -98,9 +127,26 @@ export async function saveMemory(text: string) {
 	await ws.cave?.write(MEMORY_PATH, text);
 }
 
+async function loadProjectMemory() {
+	chat.projectMemory = chat.project && ws.cave && (await ws.cave.exists(projectPath(chat.project))) ? await ws.cave.read(projectPath(chat.project)) : "";
+	return chat.projectMemory;
+}
+
+async function saveProjectMemory(text: string) {
+	if (!chat.project) return;
+	chat.projectMemory = text;
+	await ws.cave?.write(projectPath(chat.project), text);
+}
+
 /** Saves a fact, unless it's already known or is about the cave. Returns what the AI is told. */
-async function remember(fact: string): Promise<string> {
+async function remember(fact: string, project = false): Promise<string> {
 	if (!fact.trim()) return "Nothing to save.";
+	if (project && chat.project) {
+		const now = chat.projectMemory;
+		if (now.split("\n").some((l) => same(l) === same(fact))) return "That's already in the project memory.";
+		await saveProjectMemory(`${now.trim() ? now.trimEnd() : `# ${chat.project}`}\n- ${fact.trim()}\n`);
+		return "Saved to the project memory.";
+	}
 	if (aboutCave(fact)) return "Not saved: only remember things about the person, not their cave.";
 	const now = chat.memory || (await loadMemory());
 	if (now.split("\n").some((l) => same(l) === same(fact) || (same(fact).length > 12 && same(l).includes(same(fact))))) return "You already remember that.";
@@ -133,14 +179,105 @@ export async function updateMemory(source: ApiMessage[] = history) {
 		);
 		if (text.trim().length > 20) await saveMemory(`${text.trim()}\n`);
 		sinceMemory = 0;
+		if (chat.project) await updateProjectMemory(transcript);
 	} catch {
 		// Not important enough to bother the user; it will try again later.
 	}
 }
 
+/** Folds what a project's chat decided into the project's memory. */
+async function updateProjectMemory(transcript: string) {
+	let text = "";
+	await stream(
+		{
+			messages: [
+				{ role: "system", content: "You keep a short memory note about one project in a note-taking app. Reply with ONLY the updated note in Markdown, nothing else." },
+				{ role: "user", content: `The project is the folder "${chat.project}". Here is its memory note:\n\n${chat.projectMemory || "(empty)"}\n\nHere is the latest conversation about it:\n\n${transcript}\n\nRewrite the note in under 200 words: what the project is, decisions made, names and facts to keep straight, and what's next. Keep what still matters from the old note.` },
+			],
+			temperature: 0.3,
+		},
+		(d) => (text += ((d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? ""))
+	);
+	if (text.trim().length > 20) await saveProjectMemory(`${text.trim()}\n`);
+}
+
+// ---- Saved chats ----
+
+/** Forgets the open chat and the memory when the cave changes. */
+function sameCave() {
+	const id = ws.cave?.id ?? "";
+	if (chat.caveId === id) return;
+	Object.assign(chat, { caveId: id, id: newId(), project: "", projectMemory: "", messages: [], memory: "", memoryLoaded: false, list: [] });
+	history = [];
+	turnStart = 0;
+}
+
+export async function loadChats() {
+	sameCave();
+	try {
+		chat.list = ws.cave && (await ws.cave.exists(CHATS)) ? (JSON.parse(await ws.cave.read(CHATS)) as ChatInfo[]) : [];
+	} catch {
+		chat.list = [];
+	}
+	return chat.list;
+}
+
+async function saveList() {
+	chat.list.sort((a, b) => b.updated - a.updated);
+	await ws.cave?.write(CHATS, JSON.stringify(chat.list, null, 1));
+}
+
+/** Saves the open chat (nothing until something has been said). */
+async function saveChat() {
+	if (!ws.cave || !chat.messages.length) return;
+	const first = chat.messages.find((m) => m.role === "user")?.text ?? "Chat";
+	const old = chat.list.find((c) => c.id === chat.id);
+	const info: ChatInfo = { id: chat.id, title: old?.title ?? (first.length > 48 ? `${first.slice(0, 46).trimEnd()}…` : first), project: chat.project, updated: Date.now() };
+	// Undo can't be saved, so a reopened plan just says what happened.
+	const messages = chat.messages.map((m) => ({ ...m, plan: m.plan && { ...m.plan, undo: [], status: m.plan.status === "doing" ? "done" : m.plan.status } }));
+	await ws.cave.write(chatPath(chat.id), JSON.stringify({ ...info, history, messages }));
+	chat.list = [info, ...chat.list.filter((c) => c.id !== chat.id)];
+	await saveList();
+}
+
+export async function openChat(id: string) {
+	if (chat.busy || !ws.cave || id === chat.id) return;
+	await newChat();
+	const saved = JSON.parse(await ws.cave.read(chatPath(id))) as ChatInfo & { history: ApiMessage[]; messages: ChatMessage[] };
+	history = saved.history;
+	turnStart = history.length;
+	nextId = Math.max(nextId, ...saved.messages.map((m) => m.id + 1));
+	Object.assign(chat, { id, project: saved.project, messages: saved.messages.map((m) => ({ ...m, plan: m.plan && { ...m.plan, undo: [], reopened: m.plan.status === "done" } })) });
+	await loadProjectMemory();
+}
+
+export async function renameChat(id: string, title: string) {
+	const c = chat.list.find((x) => x.id === id);
+	if (!c || !title.trim()) return;
+	c.title = title.trim();
+	await saveList();
+}
+
+export async function deleteChat(id: string) {
+	if (id === chat.id) await newChat();
+	await ws.cave?.remove(chatPath(id)).catch(() => {});
+	chat.list = chat.list.filter((c) => c.id !== id);
+	await saveList();
+}
+
+/** Puts the open chat in a project folder ("" for none). */
+export async function setProject(folder: string) {
+	chat.project = folder;
+	await loadProjectMemory();
+	if (chat.messages.length) await saveChat();
+}
+
 // ---- Talking ----
 
 function system(memory: string): string {
+	const project = chat.project
+		? `\n\nThis chat is part of the project "${chat.project}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${chat.projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
+		: "";
 	return `You are the AI helper built into Basalt, a note-taking app. You run entirely on the user's own computer: nothing they write ever leaves it. Be warm, clear and brief; plain words, short paragraphs, Markdown when it helps.
 
 How Basalt works:
@@ -164,7 +301,7 @@ ${context()}
 Today is ${new Date().toDateString()}.
 
 Your memory of this person:
-${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}`;
+${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}${project}`;
 }
 
 // ---- Staying inside the AI's limit ----
@@ -211,7 +348,9 @@ const say = (m: ChatMessage, patch: Partial<ChatMessage>) => Object.assign(chat.
 export async function send(text: string) {
 	if (chat.busy || !text.trim()) return;
 	chat.busy = true;
+	sameCave();
 	const memory = chat.memoryLoaded ? chat.memory : await loadMemory();
+	if (chat.project && !chat.projectMemory) await loadProjectMemory();
 	chat.messages.push({ id: nextId++, role: "user", text, steps: [] });
 	turnStart = history.length;
 	history.push({ role: "user", content: text });
@@ -283,7 +422,7 @@ export async function send(text: string) {
 					result = "You already did exactly that. Don't repeat it: answer the user now.";
 				} else if (call.name === "remember") {
 					const fact = String(args.fact ?? "").trim();
-					result = memories >= MAX_MEMORIES ? "That's enough remembering for this message." : await remember(fact);
+					result = memories >= MAX_MEMORIES ? "That's enough remembering for this message." : await remember(fact, args.about === "project");
 					if (result.startsWith("Saved")) {
 						memories++;
 						memoryStep ??= step({ icon: "brain", label: "" });
@@ -331,6 +470,7 @@ export async function send(text: string) {
 		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : message });
 	} finally {
 		for (const s of reply.steps) s.active = false;
+		void saveChat().catch(() => {});
 		say(reply, { streaming: false });
 		chat.busy = false;
 	}
@@ -378,12 +518,14 @@ export async function approve(m: ChatMessage) {
 	const skipped = plan.changes.filter((c) => !c.checked).length;
 	plan.note = [`${done} done`, skipped && `${skipped} skipped`, failed && `${failed} couldn't be done`].filter(Boolean).join(" · ");
 	history.push({ role: "user", content: `(I approved your plan: ${plan.note}.${plan.changes.filter((c) => !c.checked).map((c) => ` I left out: ${c.summary}.`).join("")})` });
+	await saveChat();
 }
 
 export function skip(m: ChatMessage) {
 	if (!m.plan || m.plan.status !== "waiting") return;
 	m.plan.status = "skipped";
 	history.push({ role: "user", content: "(I decided not to make those changes.)" });
+	void saveChat();
 }
 
 /** Takes back everything a plan did, newest first. */
@@ -392,14 +534,17 @@ export async function undo(m: ChatMessage) {
 	for (const u of [...m.plan.undo].reverse()) await u().catch(() => {});
 	m.plan.status = "undone";
 	history.push({ role: "user", content: "(I undid those changes.)" });
+	await saveChat();
 }
 
 /** Starts over, saving what was learned to memory first. */
-export async function newChat() {
+export async function newChat(project = chat.project) {
 	const old = history;
+	if (chat.messages.length) await saveChat();
 	history = [];
 	turnStart = 0;
-	if (old.length > 1) void updateMemory(old);
-	chat.messages = [];
+	if (old.length > 1 && sinceMemory > 0) void updateMemory(old);
+	Object.assign(chat, { id: newId(), messages: [], project });
 	sinceMemory = 0;
+	await loadProjectMemory();
 }

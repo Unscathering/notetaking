@@ -5,9 +5,9 @@
 	import { cubicOut } from "svelte/easing";
 	import { addModelFile, ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
 	import { SvelteSet } from "svelte/reactivity";
-	import { THINKING, chat, loadMemory, newChat, saveMemory, send, updateMemory } from "../../ai/agent.svelte";
+	import { THINKING, chat, deleteChat, loadChats, loadMemory, newChat, openChat, renameChat, saveMemory, send, setProject, updateMemory, type ChatInfo } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
-	import { warmUp } from "../../ai/writer";
+	import { speedTest, warmUp, type SpeedResult } from "../../ai/writer";
 	import { markdown } from "../../ai/markdown";
 	import { MODELS } from "../../ai/models";
 	import { ws } from "../../workspace.svelte";
@@ -25,6 +25,22 @@
 	let memoryDraft = $state("");
 	let memorySaved = $state(false);
 	let checked = false;
+	let speed = $state<SpeedResult | null>(null);
+	let timing = $state(false);
+	let speedError = $state("");
+
+	async function runSpeedTest() {
+		timing = true;
+		speed = null;
+		speedError = "";
+		try {
+			speed = await speedTest();
+		} catch (e) {
+			speedError = e instanceof Error ? e.message : String(e);
+		} finally {
+			timing = false;
+		}
+	}
 	/** Steps whose details are showing, as "message:step". */
 	const opened = new SvelteSet<string>();
 	const toggle = (key: string) => (opened.has(key) ? opened.delete(key) : opened.add(key));
@@ -44,6 +60,25 @@
 			void refresh().catch((e) => (ai.error = String(e)));
 		}
 	});
+
+	// The saved chats of this cave.
+	$effect(() => {
+		void ws.cave?.id;
+		if (aiPanel.open) void loadChats();
+	});
+
+	let renaming = $state("");
+	let renameText = $state("");
+	/** Saved chats by project, projects first. */
+	const groups = $derived.by(() => {
+		const by = new Map<string, ChatInfo[]>();
+		for (const c of chat.list) by.set(c.project, [...(by.get(c.project) ?? []), c]);
+		return [...by].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
+	});
+	const when = (t: number) => {
+		const days = Math.floor((Date.now() - t) / 86_400_000);
+		return days < 1 ? new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : days < 7 ? new Date(t).toLocaleDateString([], { weekday: "short" }) : new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+	};
 
 	// Start waking the AI as soon as the panel opens, so the first answer comes sooner.
 	$effect(() => {
@@ -106,7 +141,7 @@
 	<header>
 		{#if aiPanel.view !== "chat"}
 			<button class="icon" onclick={() => (aiPanel.view = "chat")} title="Back">{@html icon("back", 16)}</button>
-			<span class="title"><b>{aiPanel.view === "memory" ? "Memory" : "AI models"}</b></span>
+			<span class="title"><b>{aiPanel.view === "memory" ? "Memory" : aiPanel.view === "chats" ? "Chats" : "AI models"}</b></span>
 		{:else}
 			<span class="orb">{@html icon("sparkles", 15)}</span>
 			<span class="title">
@@ -114,6 +149,7 @@
 				{#if ai.phase === "ready"}<small><i class="dot" class:on={ai.running} class:busy={ai.starting || chat.busy}></i>{modelName} · {status}</small>{:else}<small>Private, on your PC</small>{/if}
 			</span>
 			{#if ai.phase === "ready"}
+				<button class="icon" onclick={() => (aiPanel.view = "chats")} title="Your chats and projects">{@html icon("clock", 16)}</button>
 				<button class="icon" onclick={openMemory} title="Memory: what your AI remembers about you">{@html icon("brain", 16)}</button>
 				<button class="icon" onclick={() => newChat()} title="New chat" disabled={chat.busy || !chat.messages.length}>{@html icon("plus", 16)}</button>
 				<button class="icon" onclick={() => (aiPanel.view = "models")} title="AI models">{@html icon("settings", 16)}</button>
@@ -161,8 +197,48 @@
 					</div>
 				{/if}
 			</section>
+			{#if aiPanel.view === "models" && ai.phase === "ready"}
+				<section>
+					<h3>Speed test</h3>
+					<p class="hint">Times a grammar check of one paragraph with {modelName}, the way writing help does it.</p>
+					<button class="ghost" disabled={timing || chat.busy} onclick={runSpeedTest}>{@html icon("zap", 13)} {timing ? "Testing…" : speed ? "Test again" : "Test the speed"}</button>
+					{#if speed}
+						<div class="speed">
+							{#if speed.wake}<div><b>{speed.wake.toFixed(1)} s</b><span>to wake up (only the first time after a nap)</span></div>{/if}
+							<div><b>{speed.paragraph.toFixed(1)} s</b><span>to check a paragraph</span></div>
+							<div><b>{Math.round(speed.wordsPerSecond)}</b><span>words written per second</span></div>
+							<p>{speed.verdict}</p>
+						</div>
+					{/if}
+					{#if speedError}<p class="problem">{speedError}</p>{/if}
+				</section>
+			{/if}
 			{#if aiPanel.view === "models" && ai.folder}<p class="folder">Stored on this PC in {ai.folder}</p>{/if}
 			{#if ai.error}<p class="problem">{ai.error}</p>{/if}
+		</div>
+	{:else if aiPanel.view === "chats"}
+		<div class="scroll chats" in:fade={{ duration: ms }}>
+			<button class="primary wide" disabled={chat.busy} onclick={async () => { await newChat(""); aiPanel.view = "chat"; }}>{@html icon("plus", 14)} New chat</button>
+			{#if !chat.list.length}<p class="hint center-text">Your chats will be saved here. Put a chat in a project (a folder) and its chats share what they learn about it.</p>{/if}
+			{#each groups as [project, list] (project)}
+				<div class="group">
+					<div class="group-head">
+						<span>{@html icon(project ? "folder" : "sparkles", 13)} {project || "Other chats"}</span>
+						{#if project}<button class="mini" title="New chat in {project}" onclick={async () => { await newChat(project); aiPanel.view = "chat"; }}>{@html icon("plus", 13)}</button>{/if}
+					</div>
+					{#each list as c (c.id)}
+						<div class="chat-row" class:is-on={c.id === chat.id}>
+							{#if renaming === c.id}
+								<input bind:value={renameText} onkeydown={(e) => { e.stopPropagation(); if (e.key === "Enter") { void renameChat(c.id, renameText); renaming = ""; } if (e.key === "Escape") renaming = ""; }} onblur={() => { void renameChat(c.id, renameText); renaming = ""; }} />
+							{:else}
+								<button class="open" onclick={async () => { await openChat(c.id); aiPanel.view = "chat"; }}><span class="t">{c.title}</span><small>{when(c.updated)}</small></button>
+								<button class="mini" title="Rename" onclick={() => { renaming = c.id; renameText = c.title; }}>{@html icon("pencil", 12)}</button>
+								<button class="mini" title="Delete" onclick={() => confirm(`Delete the chat “${c.title}”?`) && deleteChat(c.id)}>{@html icon("trash", 12)}</button>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/each}
 		</div>
 	{:else if aiPanel.view === "memory"}
 		<div class="scroll memory" in:fade={{ duration: ms }}>
@@ -222,6 +298,13 @@
 		</div>
 
 		<div class="composer">
+			<label class="project" title="Put this chat in a project: a folder whose chats share what they learn">
+				{@html icon("folder", 12)}
+				<select value={chat.project} onchange={(e) => setProject((e.target as HTMLSelectElement).value)} disabled={chat.busy}>
+					<option value="">No project</option>
+					{#each ws.folders as f (f)}<option value={f}>{f}</option>{/each}
+				</select>
+			</label>
 			<div class="box">
 				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys}></textarea>
 				{#if chat.busy}
@@ -422,6 +505,30 @@
 	.links a {
 		color: var(--link);
 		cursor: pointer;
+	}
+	.speed {
+		display: grid;
+		gap: 6px;
+		margin-top: 12px;
+		padding: 12px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		font-size: 12.5px;
+		color: var(--muted);
+	}
+	.speed div {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.speed b {
+		min-width: 52px;
+		font-size: 15px;
+		color: var(--heading);
+	}
+	.speed p {
+		margin: 4px 0 0;
+		color: var(--text);
 	}
 	.folder {
 		margin: 16px 0 0;
@@ -734,6 +841,124 @@
 		margin: 6px 0 0;
 		font-size: 10.5px;
 		color: var(--muted);
+	}
+	.chats .wide {
+		margin-bottom: 14px;
+	}
+	.center-text {
+		text-align: center;
+	}
+	.group {
+		margin-bottom: 14px;
+	}
+	.group-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 4px 4px;
+		font-size: 11.5px;
+		font-weight: 600;
+		color: var(--muted);
+	}
+	.group-head span {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.chat-row {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		border-radius: var(--radius);
+		transition: background-color var(--dur) var(--ease);
+	}
+	.chat-row:hover,
+	.chat-row.is-on {
+		background: var(--hover);
+	}
+	.chat-row .open {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 7px 8px;
+		border: 0;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 13px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.chat-row .t {
+		flex: 1;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.chat-row small {
+		flex: none;
+		font-size: 11px;
+		color: var(--muted);
+	}
+	.chat-row input {
+		flex: 1;
+		margin: 3px;
+		padding: 5px 8px;
+		border: 1px solid var(--accent);
+		border-radius: var(--radius);
+		outline: 0;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 13px;
+	}
+	.mini {
+		display: inline-flex;
+		padding: 5px;
+		border: 0;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.chat-row:hover .mini,
+	.group-head .mini {
+		opacity: 1;
+	}
+	.mini:hover {
+		color: var(--text);
+	}
+	.project {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		max-width: 100%;
+		margin: 0 0 6px 6px;
+		color: var(--muted);
+		font-size: 11.5px;
+	}
+	.project select {
+		max-width: 220px;
+		padding: 2px 4px;
+		border: 0;
+		border-radius: calc(var(--radius) * 0.6);
+		outline: 0;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		cursor: pointer;
+	}
+	.project select:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.project select option {
+		background: var(--panel);
+		color: var(--text);
 	}
 	.memory textarea {
 		width: 100%;

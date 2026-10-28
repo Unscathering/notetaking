@@ -37,7 +37,7 @@
 			<span class="note">Working on it…</span>
 		{:else if plan.status === "done"}
 			<span class="note ok">{@html icon("check", 13)} {plan.note}</span>
-			<button class="ghost" disabled={undoing} onclick={async () => { undoing = true; await undo(m); undoing = false; }}>{@html icon("undo", 13)} Undo</button>
+			{#if !plan.reopened}<button class="ghost" disabled={undoing} onclick={async () => { undoing = true; await undo(m); undoing = false; }}>{@html icon("undo", 13)} Undo</button>{/if}
 		{:else if plan.status === "undone"}
 			<span class="note">Undone. Everything is back as it was.</span>
 		{:else}
