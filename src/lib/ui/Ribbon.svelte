@@ -6,12 +6,12 @@
 	import { icon } from "./icons";
 
 	const top = ["home", "files", "search", "tags", "ai", "today", "new-note", "new-board", "palette"].map(command);
-	const bottom = ["caves", "appearance"].map(command);
+	const bottom = ["backups", "caves", "appearance"].map(command);
 
 	const isOn = (id: string) =>
 		(id === "files" || id === "search" || id === "tags") && ws.sidebarOpen && ws.panel === id
 			? true
-			: (id === "ai" && aiPanel.open) || (id === "appearance" && ws.modal === "settings") || (id === "caves" && ws.modal === "caves") || (id === "palette" && ws.modal === "palette");
+			: (id === "ai" && aiPanel.open) || (id === "appearance" && ws.modal === "settings") || (id === "caves" && ws.modal === "caves") || (id === "backups" && ws.modal === "backups") || (id === "palette" && ws.modal === "palette");
 </script>
 
 <nav class="ribbon" aria-label="Commands">

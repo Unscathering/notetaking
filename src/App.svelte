@@ -11,6 +11,8 @@
 	import ContextMenu from "./lib/ui/ContextMenu.svelte";
 	import BoardView from "./lib/ui/BoardView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
+	import Backups from "./lib/ui/Backups.svelte";
+	import { startBackups } from "./lib/backups.svelte";
 	import AiPanel from "./lib/ui/ai/AiPanel.svelte";
 	import { aiPanel } from "./lib/ai/panel.svelte";
 	import { startUpdateChecks } from "./lib/updates.svelte";
@@ -46,6 +48,11 @@
 		return () => document.removeEventListener("visibilitychange", sync);
 	});
 	let shown: string | null = null;
+
+	// Backups of each cave, from the moment it opens.
+	$effect(() => {
+		if (ws.cave?.id) startBackups();
+	});
 
 	// A soft fade and lift whenever another note comes to the front.
 	$effect(() => {
@@ -163,6 +170,8 @@
 	{/key}
 {:else if ws.modal === "caves"}
 	<CaveSwitcher {ms} />
+{:else if ws.modal === "backups"}
+	<Backups {ms} />
 {/if}
 
 <style>

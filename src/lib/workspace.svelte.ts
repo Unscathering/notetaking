@@ -17,7 +17,7 @@ import { readProps, type NoteProps } from "./notes";
 import { newBoardText } from "./board";
 
 export type Panel = "files" | "search" | "tags";
-export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings";
+export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups";
 
 class Workspace {
 	cave: Cave | null = $state(null);
@@ -37,6 +37,8 @@ class Workspace {
 	reveal: { path: string; line: number } | null = $state(null);
 	/** The latest change made to a note from outside the editor (for example by the AI). */
 	outside: { path: string; text: string; n: number } | null = $state(null);
+	/** Goes up when many notes changed at once (like a restored backup): the editor reloads them all. */
+	reloaded = $state(0);
 	/** Every note's details, kept up to date as notes change. */
 	props = $derived.by(() => {
 		const out = new Map<string, NoteProps>();
@@ -163,6 +165,13 @@ class Workspace {
 		if (!this.active || this.tabs.length < 2) return;
 		const i = this.tabs.indexOf(this.active);
 		void this.open(this.tabs[(i + step + this.tabs.length) % this.tabs.length]);
+	}
+
+	/** Drops saves still waiting to happen (before a backup is restored over them). */
+	cancelSaves() {
+		for (const t of this.timers.values()) window.clearTimeout(t);
+		this.timers.clear();
+		this.saving = false;
 	}
 
 	edited(path: string, text: string) {

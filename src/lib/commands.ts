@@ -53,6 +53,7 @@ export const COMMANDS: Command[] = [
 	{ id: "yesterday", label: "Yesterday's note", icon: "calendar", run: () => today(-1) },
 	{ id: "template", label: "New note from a template", icon: "layers", keys: "Ctrl+Shift+N", run: () => (ws.modal = "templates") },
 	{ id: "new-folder", label: "New folder", icon: "folderPlus", run: () => ws.newFolder() },
+	{ id: "backups", label: "Backups", icon: "archive", run: () => (ws.modal = ws.modal === "backups" ? null : "backups") },
 	{ id: "caves", label: "Switch cave", icon: "cave", keys: "Ctrl+Shift+O", run: () => (ws.modal = "caves") },
 	{ id: "appearance", label: "Appearance", icon: "palette", keys: "Ctrl+,", run: () => (ws.modal = ws.modal === "settings" ? null : "settings") },
 	{ id: "sidebar", label: "Show or hide the sidebar", icon: "sidebar", keys: "Ctrl+\\", run: () => (ws.sidebarOpen = !ws.sidebarOpen) },

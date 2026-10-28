@@ -18,6 +18,7 @@ import { CONTEXT, stream } from "./engine.svelte";
 import { WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
 import { recall, type Found } from "./recall";
 import { noteTitle } from "../cave";
+import { backUp } from "../backups.svelte";
 
 export const MEMORY_PATH = ".basalt/ai/memory.md";
 const CHATS = ".basalt/ai/chats.json";
@@ -517,6 +518,8 @@ export async function approve(m: ChatMessage) {
 	const plan = m.plan;
 	if (!plan || plan.status !== "waiting") return;
 	plan.status = "doing";
+	// A safety copy first, so even a plan's mistakes can be taken back from Backups.
+	await backUp("Before the AI's changes").catch(() => {});
 	let done = 0, failed = 0;
 	// Clearing the cave goes first and the home page last, so the note it points to is made first.
 	const rank = (c: Change) => (c.tool === "clear_cave" ? 0 : c.tool === "set_home" ? 2 : 1);

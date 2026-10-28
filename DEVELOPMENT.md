@@ -53,6 +53,12 @@ check again before a public launch.
   plus built-in ones, with `{{date}}`-style placeholders) and daily notes
   (`Daily/2026-10-28.md`, made from the "Daily note" template). The picker
   is the palette's "templates" mode.
+- `src/lib/backups.svelte.ts` and `ui/Backups.svelte`: automatic backups of
+  every note, folder and the cave's settings (not pictures), kept outside the
+  cave in the app's data folder (in a browser, in localStorage). Made when a
+  cave opens, every half hour if something changed, and before the AI applies
+  a plan; the newest 20 and one a day for two weeks are kept. Restoring makes
+  a backup first; `ws.reloaded` tells the editor to reload every note.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

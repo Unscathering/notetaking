@@ -81,6 +81,15 @@
 		if (view.state.doc.toString() !== o.text) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: o.text } });
 	});
 
+	// Many notes changed at once (a restored backup): forget every kept state and show the new text.
+	$effect(() => {
+		const n = ws.reloaded;
+		if (!n || !view) return;
+		states.clear();
+		const t = ws.texts.get(shown);
+		if (t != null) view.setState(stateFor(shown, t));
+	});
+
 	// Spell check follows the writing setting.
 	$effect(() => {
 		const on = writing.spellcheck;
