@@ -1,6 +1,7 @@
 <script lang="ts">
 	// What Basalt's AI does and doesn't do with your notes, in plain words.
 	import { icon } from "../icons";
+	import { usingClaude } from "../../ai/claude.svelte";
 	let { compact = false }: { compact?: boolean } = $props();
 	const POINTS = [
 		["Runs only on this computer", "Your notes, chats and memory never leave it. Nothing is uploaded, ever."],
@@ -11,6 +12,7 @@
 </script>
 
 <div class="privacy" class:compact>
+	{#if usingClaude()}<p class="note">This is how the AI on your PC works. Claude is on right now, so your messages go to Anthropic (see below).</p>{/if}
 	{#each POINTS as [title, about] (title)}
 		<div class="point">
 			<span class="tick">{@html icon(title.startsWith("Runs") ? "lock" : "check", 13)}</span>
@@ -20,6 +22,12 @@
 </div>
 
 <style>
+	.note {
+		margin: 0 0 4px;
+		font-size: 12px;
+		line-height: 1.45;
+		color: #e5a84b;
+	}
 	.privacy {
 		display: flex;
 		flex-direction: column;

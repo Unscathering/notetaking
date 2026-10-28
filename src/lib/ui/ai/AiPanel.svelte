@@ -13,6 +13,8 @@
 	import { ws } from "../../workspace.svelte";
 	import { icon } from "../icons";
 	import ModelPicker from "./ModelPicker.svelte";
+	import ClaudeSettings from "./ClaudeSettings.svelte";
+	import { claudeName, usingClaude } from "../../ai/claude.svelte";
 	import PlanCard from "./PlanCard.svelte";
 	import Privacy from "./Privacy.svelte";
 	import Progress from "./Progress.svelte";
@@ -93,8 +95,12 @@
 		if (scroller) scroller.scrollTop = scroller.scrollHeight;
 	});
 
-	const modelName = $derived(MODELS.find((m) => m.file === ai.model)?.name ?? (ai.model ? ai.model.replace(/\.gguf$/, "") : "No model"));
-	const status = $derived(ai.starting ? "Waking up…" : chat.busy ? "Thinking…" : ai.running ? "Ready" : "Sleeping");
+	/** Claude is in use instead of the AI on this PC. */
+	const online = $derived(usingClaude());
+	/** The chat can be used: a model on this PC, or Claude. */
+	const ready = $derived(ai.phase === "ready" || online);
+	const modelName = $derived(online ? claudeName() : (MODELS.find((m) => m.file === ai.model)?.name ?? (ai.model ? ai.model.replace(/\.gguf$/, "") : "No model")));
+	const status = $derived(chat.busy ? "Thinking…" : online ? "Online" : ai.starting ? "Waking up…" : ai.running ? "Ready" : "Sleeping");
 
 	const SUGGESTIONS = [
 		{ text: "Set up my cave for me", ico: "sparkles" },
@@ -146,9 +152,9 @@
 			<span class="orb">{@html icon("sparkles", 15)}</span>
 			<span class="title">
 				<b>Basalt AI</b>
-				{#if ai.phase === "ready"}<small><i class="dot" class:on={ai.running} class:busy={ai.starting || chat.busy}></i>{modelName} · {status}</small>{:else}<small>Private, on your PC</small>{/if}
+				{#if ready}<small><i class="dot" class:on={ai.running || online} class:busy={ai.starting || chat.busy}></i>{modelName} · {status}</small>{:else}<small>Private, on your PC</small>{/if}
 			</span>
-			{#if ai.phase === "ready"}
+			{#if ready}
 				<button class="icon" onclick={() => (aiPanel.view = "chats")} title="Your chats and projects">{@html icon("clock", 16)}</button>
 				<button class="icon" onclick={openMemory} title="Memory: what your AI remembers about you">{@html icon("brain", 16)}</button>
 				<button class="icon" onclick={() => newChat()} title="New chat" disabled={chat.busy || !chat.messages.length}>{@html icon("plus", 16)}</button>
@@ -158,14 +164,15 @@
 		<button class="icon" onclick={() => (aiPanel.open = false)} title="Close (Ctrl+J)">{@html icon("x", 16)}</button>
 	</header>
 
-	{#if ai.phase === "unknown"}
+	{#if ai.phase === "unknown" && !online}
 		<div class="center"><span class="spinner"></span></div>
-	{:else if ai.phase === "unavailable"}
+	{:else if ai.phase === "unavailable" && (!online || aiPanel.view === "models")}
 		<div class="scroll setup">
 			<div class="hero"><span class="big-orb">{@html icon("sparkles", 26)}</span><h2>Your own AI, right on your PC</h2><p>The AI runs in the Basalt desktop app for Windows.</p></div>
 			<Privacy />
+			<ClaudeSettings />
 		</div>
-	{:else if ai.phase === "setup" || aiPanel.view === "models"}
+	{:else if (ai.phase === "setup" && !online) || aiPanel.view === "models"}
 		<div class="scroll setup" in:fade={{ duration: ms }}>
 			{#if aiPanel.view !== "models"}
 				<div class="hero">
@@ -197,7 +204,8 @@
 					</div>
 				{/if}
 			</section>
-			{#if aiPanel.view === "models" && ai.phase === "ready"}
+			<ClaudeSettings />
+			{#if aiPanel.view === "models" && ready}
 				<section>
 					<h3>Speed test</h3>
 					<p class="hint">Times a grammar check of one paragraph with {modelName}, the way writing help does it.</p>
@@ -257,7 +265,7 @@
 					<span class="big-orb">{@html icon("sparkles", 24)}</span>
 					<h2>What can I help with?</h2>
 					<p>I can read your notes, write with you, and set up or tidy your cave. I'll always show you a plan before changing anything.</p>
-					<div class="private">{@html icon("lock", 12)} Private: I run only on this PC</div>
+					{#if online}<div class="private">{@html icon("globe", 12)} Online: {modelName}, through Anthropic</div>{:else}<div class="private">{@html icon("lock", 12)} Private: I run only on this PC</div>{/if}
 					<div class="suggestions">
 						{#each SUGGESTIONS as s (s.text)}
 							<button onclick={() => submit(s.text)}>{@html icon(s.ico, 14)}<span>{s.text}</span></button>
@@ -319,7 +327,7 @@
 					<button class="send" disabled={!draft.trim()} onclick={() => submit()} title="Send (Enter)">{@html icon("send", 16)}</button>
 				{/if}
 			</div>
-			<p class="foot">{@html icon("lock", 10)} Runs on this PC. Nothing leaves it.</p>
+			{#if online}<p class="foot">{@html icon("globe", 10)} Using Claude: messages and the notes it reads go to Anthropic.</p>{:else}<p class="foot">{@html icon("lock", 10)} Runs on this PC. Nothing leaves it.</p>{/if}
 		</div>
 	{/if}
 </aside>

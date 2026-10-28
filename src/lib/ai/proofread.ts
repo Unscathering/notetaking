@@ -40,6 +40,8 @@ Reply with ONLY the text, nothing before or after it: no quotes, no notes, no ex
 		],
 		temperature: mode === "grammar" ? 0 : mode === "fix" ? 0.2 : 0.7,
 		cache_prompt: true,
+		// For Claude: a quick job.
+		effort: "low" as const,
 	};
 }
 

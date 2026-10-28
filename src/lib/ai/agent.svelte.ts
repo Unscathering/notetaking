@@ -15,8 +15,9 @@
 import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
 import { CONTEXT, stream } from "./engine.svelte";
-import { WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
+import { TOOLS, WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
 import { recall, type Found } from "./recall";
+import { usingClaude } from "./claude.svelte";
 import { noteTitle } from "../cave";
 import { backUp } from "../backups.svelte";
 
@@ -35,6 +36,8 @@ interface ApiMessage {
 	content: string;
 	tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
 	tool_call_id?: string;
+	/** Claude's answer exactly as it came, sent back unchanged. */
+	raw?: unknown[];
 }
 
 export interface Plan {
@@ -179,6 +182,7 @@ export async function updateMemory(source: ApiMessage[] = history) {
 					},
 				],
 				temperature: 0.3,
+				effort: "low",
 			},
 			(d) => (text += ((d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? ""))
 		);
@@ -200,6 +204,7 @@ async function updateProjectMemory(transcript: string) {
 				{ role: "user", content: `The project is the folder "${chat.project}". Here is its memory note:\n\n${chat.projectMemory || "(empty)"}\n\nHere is the latest conversation about it:\n\n${transcript}\n\nRewrite the note in under 200 words: what the project is, decisions made, names and facts to keep straight, and what's next. Keep what still matters from the old note.` },
 			],
 			temperature: 0.3,
+			effort: "low",
 		},
 		(d) => (text += ((d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? ""))
 	);
@@ -286,7 +291,7 @@ function system(memory: string, found: Found[] = []): string {
 	const project = chat.project
 		? `\n\nThis chat is part of the project "${chat.project}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${chat.projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
 		: "";
-	return `You are the AI helper built into Basalt, a note-taking app. You run entirely on the user's own computer: nothing they write ever leaves it. Be warm, clear and brief; plain words, short paragraphs, Markdown when it helps.
+	return `You are the AI helper built into Basalt, a note-taking app. ${usingClaude() ? "You are Claude, made by Anthropic, running on Anthropic's servers: the user chose this, so what they share with you is sent there." : "You run entirely on the user's own computer: nothing they write ever leaves it."} Be warm, clear and brief; plain words, short paragraphs, Markdown when it helps.
 
 How Basalt works:
 - A "cave" is a folder of notes. Notes are Markdown files; folders organize them and can have a color and an icon in the sidebar.
@@ -334,6 +339,8 @@ function plain(list: ApiMessage[]): ApiMessage[] {
 }
 
 function fit(sys: string, tools: object[], budget: number): ApiMessage[] {
+	// Claude keeps a whole conversation in mind, and its history must stay exactly as it was.
+	if (usingClaude()) return [{ role: "system", content: sys }, ...history];
 	const room = budget - ANSWER_ROOM - tokens(sys) - tokens(tools);
 	let older = plain(history.slice(0, turnStart));
 	let now = history.slice(turnStart).map((m) => ({ ...m }));
@@ -366,7 +373,7 @@ export async function send(text: string) {
 	chat.messages.push({ id: nextId++, role: "assistant", text: "", steps: [], streaming: true });
 	const reply = chat.messages[chat.messages.length - 1];
 	const plan: Change[] = [];
-	const tools = toolsFor(text);
+	const tools = usingClaude() ? TOOLS : toolsFor(text);
 	const done = new Set<string>();
 	let changeId = 1;
 	let memories = 0;
@@ -385,10 +392,12 @@ export async function send(text: string) {
 	try {
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let content = "";
+			let raw: unknown[] | undefined;
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
-				stream({ messages: fit(system(memory, found), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true }, (d) => {
+				stream({ messages: fit(system(memory, found), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true, effort: "medium" }, (d) => {
+					if (d.basalt_raw) raw = d.basalt_raw as unknown[];
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
 				if (delta.content) {
@@ -413,10 +422,10 @@ export async function send(text: string) {
 			}
 			const real = calls.filter(Boolean);
 			if (stopped || !real.length) {
-				history.push({ role: "assistant", content });
+				history.push({ role: "assistant", content, raw });
 				break;
 			}
-			history.push({ role: "assistant", content, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
+			history.push({ role: "assistant", content, raw, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
 			if (content.trim()) say(reply, { text: `${reply.text}\n\n` });
 			let fresh = 0;
 			for (const call of real) {

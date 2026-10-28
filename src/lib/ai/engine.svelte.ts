@@ -3,6 +3,7 @@
 // quiet minutes, so it takes no memory the rest of the time.
 import { inDesktopApp } from "../cave";
 import { MODELS, gpuLayers, recommended, type Hardware } from "./models";
+import { claudeStream, stopClaude, usingClaude } from "./claude.svelte";
 
 export interface ModelFile {
 	file: string;
@@ -199,6 +200,7 @@ export const recommendedModel = () => recommended(ai.hardware ?? { vramMb: 0, ra
 let stopRequested = false;
 export function stopAnswer() {
 	stopRequested = true;
+	stopClaude();
 	if (inDesktopApp) void invoke("ai_stop_chat");
 }
 
@@ -207,8 +209,12 @@ export function stopAnswer() {
  * (OpenAI-style "data:" lines from the engine).
  */
 export async function stream(body: object, onEvent: (data: Record<string, unknown>) => void) {
-	await wake();
 	stopRequested = false;
+	if (usingClaude()) {
+		await claudeStream(body as Parameters<typeof claudeStream>[0], (d) => !stopRequested && onEvent(d));
+		return stopRequested;
+	}
+	await wake();
 	let buffer = "";
 	const feed = (text: string) => {
 		buffer += text;

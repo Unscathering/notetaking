@@ -5,6 +5,7 @@ import type { WritingHelpHooks } from "../editor/writingHelp";
 import { writing } from "../writing.svelte";
 import { ai, refresh, stream, wake } from "./engine.svelte";
 import { clean, request, type Mode } from "./proofread";
+import { usingClaude } from "./claude.svelte";
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -45,12 +46,12 @@ export function helperReady(): boolean {
 		checked = true;
 		void refresh().catch(() => {});
 	}
-	return ai.phase === "ready";
+	return ai.phase === "ready" || usingClaude();
 }
 
 /** Starts waking the engine early, so the first answer comes sooner. */
 export function warmUp() {
-	if (ai.phase === "ready" && !ai.running && !ai.starting) void wake().catch(() => {});
+	if (!usingClaude() && ai.phase === "ready" && !ai.running && !ai.starting) void wake().catch(() => {});
 }
 
 /** What the editor's writing help needs from the AI. */
@@ -74,8 +75,8 @@ export interface SpeedResult {
 /** Times a grammar check of one paragraph, the way writing help does it. */
 export async function speedTest(): Promise<SpeedResult> {
 	const t0 = performance.now();
-	const asleep = !ai.running;
-	await wake();
+	const asleep = !ai.running && !usingClaude();
+	if (!usingClaude()) await wake();
 	const wakeS = asleep ? (performance.now() - t0) / 1000 : 0;
 	const t1 = performance.now();
 	let text = "";

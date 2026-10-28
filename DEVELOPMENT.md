@@ -79,6 +79,16 @@ check again before a public launch.
   The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
   `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
   lets you try it without the desktop app.
+- Claude (optional, online): `ai/claude.svelte.ts` turns the engine-style
+  requests into Messages API calls through the official `@anthropic-ai/sdk`
+  (loaded only when used) and streams the answer back in the engine's shape,
+  so the chat, writing help and memory work unchanged. Claude's answers are
+  kept as they came (`raw` on the history) and sent back unchanged; the chat
+  isn't trimmed for it. Opus and Sonnet use server-side fallbacks
+  (`fallbacks: "default"`). The key and choice are in localStorage on this
+  PC (`basalt.claude`). The panel says plainly when messages go to Anthropic.
+  `ui/ai/ClaudeSettings.svelte` is its section under AI models. In a browser,
+  `localStorage["basalt.claude-dev-url"]` points the SDK at a stand-in server.
 - Writing help: `ai/proofread.ts` (the three modes, the word-by-word
   comparison and the rules that keep grammar mode to small fixes, never
   touching links, code, tags or formatting), `ai/writer.ts` (sends lines to
