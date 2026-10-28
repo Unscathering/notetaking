@@ -209,25 +209,52 @@ async fn download(app: &AppHandle, engine: &Engine, url: &str, dest: &Path, what
     Ok(())
 }
 
+/// Picks the engine file for this computer from a release's files: the one
+/// that uses any graphics card (Vulkan), or the processor-only one if a
+/// release doesn't have that.
+fn pick_asset(assets: &[serde_json::Value]) -> Option<String> {
+    let os = if cfg!(windows) { "win" } else { "ubuntu" };
+    let named = |a: &serde_json::Value| a["name"].as_str().unwrap_or("").to_lowercase();
+    let usable = |n: &str| n.ends_with(".zip") && n.contains(os) && n.contains("x64") && !n.contains("arm64") && !n.contains("cudart");
+    for want in ["vulkan", "cpu"] {
+        if let Some(a) = assets.iter().find(|a| {
+            let n = named(a);
+            usable(&n) && n.contains(want)
+        }) {
+            return a["browser_download_url"].as_str().map(String::from);
+        }
+    }
+    None
+}
+
 /// Downloads the newest llama.cpp engine that works with any graphics card (Vulkan).
 #[tauri::command]
 pub async fn ai_install_engine(app: AppHandle, engine: State<'_, Engine>) -> Result<(), String> {
     let dir = root(&app)?;
-    let release: serde_json::Value = client()?
-        .get("https://api.github.com/repos/ggml-org/llama.cpp/releases/latest")
+    // The newest few releases, in case the very newest is still uploading its files.
+    let res = client()?
+        .get("https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=8")
+        .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .map_err(|e| format!("Couldn't reach GitHub: {e}"))?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-    let wanted = if cfg!(windows) { "bin-win-vulkan-x64.zip" } else { "bin-ubuntu-vulkan-x64.zip" };
-    let url = release["assets"]
-        .as_array()
-        .and_then(|a| a.iter().find(|x| x["name"].as_str().is_some_and(|n| n.ends_with(wanted))))
-        .and_then(|x| x["browser_download_url"].as_str())
-        .ok_or("Couldn't find the AI engine for this computer.")?
-        .to_string();
+        .map_err(|e| format!("Couldn't reach GitHub to get the AI engine: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("GitHub said {} when asked for the AI engine. Try again in a few minutes.", res.status()));
+    }
+    let releases: serde_json::Value = res.json().await.map_err(|e| format!("GitHub's answer didn't make sense: {e}"))?;
+    let list = releases.as_array().cloned().unwrap_or_default();
+    let url = list
+        .iter()
+        .filter(|r| !r["draft"].as_bool().unwrap_or(false))
+        .find_map(|r| pick_asset(r["assets"].as_array().map(Vec::as_slice).unwrap_or(&[])))
+        .ok_or_else(|| {
+            let names: Vec<String> = list
+                .first()
+                .and_then(|r| r["assets"].as_array())
+                .map(|a| a.iter().filter_map(|x| x["name"].as_str().map(String::from)).take(12).collect())
+                .unwrap_or_default();
+            format!("Couldn't find the AI engine for this computer among {} releases. Files in the newest: {}", list.len(), if names.is_empty() { "none".into() } else { names.join(", ") })
+        })?;
     let zip_path = dir.join("engine.zip");
     download(&app, &engine, &url, &zip_path, "engine").await?;
     let target = dir.join("engine");
@@ -350,4 +377,24 @@ pub async fn ai_chat(engine: State<'_, Engine>, body: String, on_chunk: Channel<
 #[tauri::command]
 pub fn ai_stop_chat(engine: State<'_, Engine>) {
     engine.cancel_chat.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_asset;
+    use serde_json::json;
+
+    #[test]
+    fn picks_the_vulkan_engine_for_this_computer() {
+        let os = if cfg!(windows) { "win" } else { "ubuntu" };
+        let assets = vec![
+            json!({ "name": format!("cudart-llama-bin-{os}-cuda-12.4-x64.zip"), "browser_download_url": "cudart" }),
+            json!({ "name": format!("llama-b7100-bin-{os}-cpu-arm64.zip"), "browser_download_url": "arm" }),
+            json!({ "name": format!("llama-b7100-bin-{os}-cpu-x64.zip"), "browser_download_url": "cpu" }),
+            json!({ "name": format!("llama-b7100-bin-{os}-vulkan-x64.zip"), "browser_download_url": "vulkan" }),
+        ];
+        assert_eq!(pick_asset(&assets).as_deref(), Some("vulkan"));
+        assert_eq!(pick_asset(&assets[..3]).as_deref(), Some("cpu"));
+        assert_eq!(pick_asset(&assets[..2]), None);
+    }
 }
