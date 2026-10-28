@@ -11,6 +11,7 @@ export interface ModelFile {
 }
 
 const KEY = "basalt.ai";
+const HW_KEY = "basalt.ai-hardware";
 const SLEEP_MINUTES = 5;
 /** For trying the AI in a browser: the address of an engine running elsewhere. */
 const devUrl = () => (inDesktopApp ? "" : (localStorage.getItem("basalt.ai-dev-url") ?? ""));
@@ -62,15 +63,29 @@ export async function refresh() {
 	}
 	const s = await invoke<{ engine: boolean; models: ModelFile[]; ramMb: number; running: boolean; folder: string }>("ai_status");
 	Object.assign(ai, { engine: s.engine, models: s.models, running: s.running, folder: s.folder });
-	let vram = 0, gpu = "";
-	if (s.engine) {
-		const devices = await invoke<Array<{ name: string; memoryMb: number; freeMb: number }>>("ai_devices").catch(() => []);
-		const best = devices.sort((a, b) => b.freeMb - a.freeMb)[0];
-		if (best) (vram = best.freeMb), (gpu = best.name);
-	}
-	ai.hardware = { vramMb: vram, ramMb: s.ramMb, gpuName: gpu };
 	if (!s.models.some((m) => m.file === ai.model)) ai.model = s.models[0]?.file ?? "";
 	ai.phase = s.engine && ai.model ? "ready" : "setup";
+	// Checking the graphics card takes a few seconds, so show what we found last
+	// time straight away and check again quietly.
+	try {
+		ai.hardware = { ...(JSON.parse(localStorage.getItem(HW_KEY) ?? "null") as Hardware), ramMb: s.ramMb };
+	} catch {
+		ai.hardware = null;
+	}
+	if (s.engine) void checkHardware(s.ramMb);
+	else ai.hardware ??= { vramMb: 0, ramMb: s.ramMb, gpuName: "" };
+}
+
+/** Finds the best graphics card: a real one beats graphics built into the processor. */
+async function checkHardware(ramMb: number) {
+	const devices = await invoke<Array<{ id: string; name: string; integrated: boolean; memoryMb: number; freeMb: number }>>("ai_devices").catch(() => []);
+	const best = [...devices].sort((a, b) => Number(a.integrated) - Number(b.integrated) || b.freeMb - a.freeMb)[0];
+	ai.hardware = best && !best.integrated ? { vramMb: best.freeMb, ramMb, gpuName: best.name, device: best.id } : { vramMb: 0, ramMb, gpuName: best?.name ?? "", device: best?.id };
+	try {
+		localStorage.setItem(HW_KEY, JSON.stringify(ai.hardware));
+	} catch {
+		// Fine; it checks again next time.
+	}
 }
 
 async function withProgress(job: () => Promise<void>) {
@@ -105,6 +120,18 @@ export const downloadModel = (id: string) =>
 	});
 
 export const cancelDownload = () => invoke("ai_cancel_download");
+
+/** Uses a model file the user already downloaded (copied into Basalt's folder). */
+export const addModelFile = () =>
+	withProgress(async () => {
+		const { open } = await import("@tauri-apps/plugin-dialog");
+		const path = await open({ multiple: false, directory: false, filters: [{ name: "AI model", extensions: ["gguf"] }] });
+		if (typeof path !== "string") return;
+		const file = await invoke<string>("ai_add_model", { path });
+		ai.model = file;
+		remember();
+		await refresh();
+	});
 
 export async function useModel(file: string) {
 	await stop();
@@ -142,7 +169,14 @@ export async function wake() {
 	try {
 		const choice = MODELS.find((m) => m.file === file.file);
 		const layers = gpuLayers(choice, ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
-		await invoke("ai_start", { model: file.path, gpuLayers: layers, context: 12288 });
+		const hw = ai.hardware;
+		try {
+			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: 12288, device: hw?.device && hw.vramMb ? hw.device : null });
+		} catch (e) {
+			// Older engines don't know how to pick a card; try once without.
+			if (!hw?.device) throw e;
+			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: 12288, device: null });
+		}
 		ai.running = true;
 		rest();
 	} finally {

@@ -45,7 +45,11 @@ impl Engine {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
+    /// The engine's name for it, like "Vulkan1".
+    id: String,
     name: String,
+    /// Built into the processor (it borrows normal memory, so it's slower).
+    integrated: bool,
     memory_mb: u64,
     free_mb: u64,
 }
@@ -163,7 +167,7 @@ pub async fn ai_devices(app: AppHandle) -> Result<Vec<Device>, String> {
     // Lines look like: "  Vulkan0: NVIDIA GeForce RTX 4050 Laptop GPU (6141 MiB, 5933 MiB free)"
     let mut devices = Vec::new();
     for line in text.lines() {
-        let Some((_, rest)) = line.split_once(": ") else { continue };
+        let Some((id, rest)) = line.split_once(": ") else { continue };
         let Some(open) = rest.rfind('(') else { continue };
         let name = rest[..open].trim().to_string();
         let nums: Vec<u64> = rest[open..]
@@ -172,15 +176,42 @@ pub async fn ai_devices(app: AppHandle) -> Result<Vec<Device>, String> {
             .filter_map(|s| s.parse().ok())
             .collect();
         if rest.contains("MiB") && nums.len() >= 2 {
-            devices.push(Device { name, memory_mb: nums[0], free_mb: nums[1] });
+            devices.push(Device { id: id.trim().to_string(), integrated: is_integrated(&name), name, memory_mb: nums[0], free_mb: nums[1] });
         }
     }
     Ok(devices)
 }
 
+/// Graphics built into the processor, like "AMD Radeon 780M Graphics" or
+/// "Intel(R) UHD Graphics", as opposed to a separate graphics card.
+fn is_integrated(name: &str) -> bool {
+    let n = name.to_lowercase().replace("(tm)", "").replace("(r)", "").replace("  ", " ");
+    let discrete = ["nvidia", "geforce", "rtx", "gtx", "quadro", "radeon rx", "radeon pro", "arc a", "arc b"];
+    !discrete.iter().any(|d| n.contains(d)) && (n.ends_with("graphics") || n.contains("uhd") || n.contains("iris") || n.contains("vega"))
+}
+
+/// An error with every reason behind it, so a failed download says why.
+fn reasons(e: &dyn std::error::Error) -> String {
+    let mut text = e.to_string();
+    let mut source = e.source();
+    while let Some(s) = source {
+        text.push_str(": ");
+        text.push_str(&s.to_string());
+        source = s.source();
+    }
+    text
+}
+
 async fn download(app: &AppHandle, engine: &Engine, url: &str, dest: &Path, what: &str) -> Result<(), String> {
     engine.cancel_download.store(false, Ordering::SeqCst);
-    let res = client()?.get(url).send().await.map_err(|e| format!("Couldn't start the download: {e}"))?;
+    // If the first try can't connect, try once more the old-fashioned way (HTTP/1.1).
+    let res = match client()?.get(url).send().await {
+        Ok(r) => r,
+        Err(first) => {
+            let http1 = reqwest::Client::builder().user_agent("Basalt").http1_only().build().map_err(|e| e.to_string())?;
+            http1.get(url).send().await.map_err(|e| format!("Couldn't start the download: {} (first try: {})", reasons(&e), reasons(&first)))?
+        }
+    };
     if !res.status().is_success() {
         return Err(format!("The download failed ({}).", res.status()));
     }
@@ -195,7 +226,7 @@ async fn download(app: &AppHandle, engine: &Engine, url: &str, dest: &Path, what
             let _ = tokio::fs::remove_file(&part).await;
             return Err("Download stopped.".into());
         }
-        let chunk = chunk.map_err(|e| format!("The download was interrupted: {e}"))?;
+        let chunk = chunk.map_err(|e| format!("The download was interrupted: {}", reasons(&e)))?;
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
         done += chunk.len() as u64;
         if done - last > 1_000_000 || done == total {
@@ -281,6 +312,41 @@ pub fn ai_cancel_download(engine: State<'_, Engine>) {
     engine.cancel_download.store(true, Ordering::SeqCst);
 }
 
+/// Copies a model file the user already has into Basalt's models folder.
+#[tauri::command]
+pub async fn ai_add_model(app: AppHandle, path: String) -> Result<String, String> {
+    let from = PathBuf::from(&path);
+    let name = from.file_name().and_then(|n| n.to_str()).ok_or("That isn't a file.")?.to_string();
+    if !name.to_lowercase().ends_with(".gguf") {
+        return Err("Pick a .gguf model file.".into());
+    }
+    let to = root(&app)?.join("models").join(&name);
+    let total = std::fs::metadata(&from).map_err(|e| e.to_string())?.len();
+    let _ = app.emit("ai-progress", Progress { what: name.clone(), done: 0, total });
+    let app2 = app.clone();
+    let name2 = name.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        use std::io::{Read, Write};
+        let mut src = std::fs::File::open(&from).map_err(|e| e.to_string())?;
+        let mut dst = std::fs::File::create(&to).map_err(|e| e.to_string())?;
+        let mut buf = vec![0u8; 8 << 20];
+        let mut done = 0u64;
+        loop {
+            let n = src.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            dst.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+            done += n as u64;
+            let _ = app2.emit("ai-progress", Progress { what: name2.clone(), done, total });
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(name)
+}
+
 #[tauri::command]
 pub fn ai_delete_model(app: AppHandle, file: String) -> Result<(), String> {
     if file.contains(['/', '\\']) {
@@ -292,7 +358,7 @@ pub fn ai_delete_model(app: AppHandle, file: String) -> Result<(), String> {
 /// Starts the engine with a model, offloading `gpu_layers` layers to the
 /// graphics card. Returns once it's ready to answer.
 #[tauri::command]
-pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, gpu_layers: u32, context: u32) -> Result<u16, String> {
+pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, gpu_layers: u32, context: u32, device: Option<String>) -> Result<u16, String> {
     engine.stop();
     let server = find_server(&root(&app)?.join("engine")).ok_or("The AI engine isn't installed yet.")?;
     let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
@@ -300,6 +366,8 @@ pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, 
         Command::new(&server)
             .args(["-m", &model, "--host", "127.0.0.1", "--port", &port.to_string()])
             .args(["-ngl", &gpu_layers.to_string(), "-c", &context.to_string(), "--jinja"])
+            // Only the chosen graphics card, not the one built into the processor.
+            .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
             .current_dir(server.parent().unwrap_or(Path::new("."))),
     )
     .stdin(Stdio::null())
@@ -396,5 +464,15 @@ mod tests {
         assert_eq!(pick_asset(&assets).as_deref(), Some("vulkan"));
         assert_eq!(pick_asset(&assets[..3]).as_deref(), Some("cpu"));
         assert_eq!(pick_asset(&assets[..2]), None);
+    }
+
+    #[test]
+    fn tells_built_in_graphics_from_graphics_cards() {
+        assert!(super::is_integrated("AMD Radeon 780M Graphics"));
+        assert!(super::is_integrated("Intel(R) UHD Graphics 620"));
+        assert!(super::is_integrated("Intel(R) Arc(TM) Graphics"));
+        assert!(!super::is_integrated("NVIDIA GeForce RTX 4050 Laptop GPU"));
+        assert!(!super::is_integrated("AMD Radeon RX 7800 XT"));
+        assert!(!super::is_integrated("Intel(R) Arc(TM) A770 Graphics"));
     }
 }

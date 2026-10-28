@@ -32,6 +32,8 @@ export interface Hardware {
 	vramMb: number;
 	ramMb: number;
 	gpuName: string;
+	/** The engine's name for the card to use, like "Vulkan1". */
+	device?: string;
 }
 
 /** The model that suits this computer best. */

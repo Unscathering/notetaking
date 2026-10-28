@@ -3,7 +3,7 @@
 	// memory note and the model settings.
 	import { fade, fly } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
-	import { ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
+	import { addModelFile, ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
 	import { chat, loadMemory, newChat, saveMemory, send, updateMemory } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
 	import { markdown } from "../../ai/markdown";
@@ -130,7 +130,16 @@
 				<h3>{#if aiPanel.view !== "models"}<span class="step">{ai.engine ? 1 : 2}</span>{/if} {aiPanel.view === "models" ? "Models" : "Pick a brain"}</h3>
 				<p class="hint">Bigger models are smarter but slower. You can switch any time; each is a one-time download.</p>
 				{#if ai.download && ai.download.what !== "engine"}<Progress />{/if}
-				{#if ai.engine}<ModelPicker />{/if}
+				{#if ai.engine}
+					<ModelPicker />
+					<div class="own-model">
+						<button class="ghost" disabled={!!ai.download} onclick={addModelFile}>{@html icon("upload", 13)} Use a model file I already have</button>
+						<p class="hint">Downloads not working? Open a model's link in your browser, then pick the downloaded <code>.gguf</code> file here.</p>
+						<div class="links">
+							{#each MODELS as m (m.id)}<a href={m.url} onclick={(e) => { e.preventDefault(); void import("@tauri-apps/plugin-opener").then((o) => o.openUrl(m.url)); }}>{m.name} ({m.sizeGb} GB)</a>{/each}
+						</div>
+					</div>
+				{/if}
 			</section>
 			{#if aiPanel.view === "models" && ai.folder}<p class="folder">Stored on this PC in {ai.folder}</p>{/if}
 			{#if ai.error}<p class="problem">{ai.error}</p>{/if}
@@ -364,6 +373,25 @@
 		font-size: 12px;
 		line-height: 1.5;
 		color: var(--muted);
+	}
+	.own-model {
+		margin-top: 14px;
+	}
+	.own-model .hint {
+		margin: 8px 0 6px;
+	}
+	.own-model code {
+		font: 11px var(--font-code);
+	}
+	.links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		font-size: 12px;
+	}
+	.links a {
+		color: var(--link);
+		cursor: pointer;
 	}
 	.folder {
 		margin: 16px 0 0;

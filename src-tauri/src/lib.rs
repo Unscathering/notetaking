@@ -19,6 +19,7 @@ pub fn run() {
             ai::ai_download_model,
             ai::ai_cancel_download,
             ai::ai_delete_model,
+            ai::ai_add_model,
             ai::ai_start,
             ai::ai_stop,
             ai::ai_chat,
