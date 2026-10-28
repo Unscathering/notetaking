@@ -140,6 +140,9 @@
 		backdrop-filter: var(--float-filter);
 		box-shadow: var(--glass-edge), 0 40px 100px rgba(0, 0, 0, 0.45);
 		transition: opacity var(--dur) var(--ease), scale var(--dur) var(--ease);
+		/* Its own layer, drawn as one piece, so a change inside never leaves holes. */
+		isolation: isolate;
+		will-change: transform;
 	}
 	.scrim.is-peeking,
 	.window.is-peeking {
@@ -283,5 +286,6 @@
 		min-height: 0;
 		overflow-y: auto;
 		padding: 4px 28px 30px;
+		contain: paint;
 	}
 </style>

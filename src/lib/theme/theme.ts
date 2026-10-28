@@ -325,7 +325,9 @@ export function themeVars(t: Theme): Record<string, string> {
 
 /** Writes a theme into CSS variables on the page. */
 export function applyTheme(t: Theme, root: HTMLElement = document.documentElement) {
-	for (const [k, v] of Object.entries(themeVars(t))) root.style.setProperty(k, v);
+	// Only what changed: re-setting every value makes the web view redraw every
+	// glass surface at once, which on some Windows PCs leaves parts unpainted.
+	for (const [k, v] of Object.entries(themeVars(t))) if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v);
 	root.dataset.headings = t.headings.style;
 	root.dataset.material = t.glass.material;
 	root.dataset.marker = t.sidebar.marker ? "on" : "off";
