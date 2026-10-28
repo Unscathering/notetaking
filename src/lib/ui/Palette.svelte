@@ -7,9 +7,10 @@
 	import { noteTitle, parentOf } from "../cave";
 	import { ws } from "../workspace.svelte";
 	import { icon, type IconName } from "./icons";
+	import { TEMPLATE_FOLDER, fromTemplate, makeTemplateFolder, templates } from "../templates";
 
 	interface Props {
-		mode: "palette" | "switcher";
+		mode: "palette" | "switcher" | "templates";
 		ms: number;
 	}
 	let { mode, ms }: Props = $props();
@@ -47,7 +48,12 @@
 		const all: Item[] =
 			mode === "palette"
 				? COMMANDS.filter((c) => c.id !== "palette").map((c) => ({ label: c.label, icon: c.icon, keys: c.keys, run: c.run }))
-				: ws.notes.map((p) => ({ label: noteTitle(p), sub: parentOf(p), icon: "file" as IconName, run: () => ws.open(p) }));
+				: mode === "templates"
+					? [
+							...templates().map((t) => ({ label: t.name, sub: t.path ? "yours" : "built in", icon: (t.name === "Board" ? "board" : t.name === "Daily note" ? "calendar" : "file") as IconName, run: () => fromTemplate(t.name) })),
+							...(ws.folders.includes(TEMPLATE_FOLDER) ? [] : [{ label: "Make my own templates", sub: `copies these into a "${TEMPLATE_FOLDER}" folder to change`, icon: "folderPlus" as IconName, run: makeTemplateFolder }]),
+						]
+					: ws.notes.map((p) => ({ label: noteTitle(p), sub: parentOf(p), icon: "file" as IconName, run: () => ws.open(p) }));
 		return all
 			.map((it) => ({ it, s: score(`${it.label} ${it.sub ?? ""}`, q) }))
 			.filter((x) => x.s > 0)
@@ -89,7 +95,7 @@
 <div class="palette" transition:fly={{ y: -12, duration: ms, easing: cubicOut }} role="dialog" aria-label={mode === "palette" ? "Command palette" : "Open a note"}>
 	<div class="field">
 		<span>{@html icon(mode === "palette" ? "command" : "search")}</span>
-		<input bind:this={input} bind:value={query} {onkeydown} placeholder={mode === "palette" ? "Type a command…" : "Find a note…"} />
+		<input bind:this={input} bind:value={query} {onkeydown} placeholder={mode === "palette" ? "Type a command…" : mode === "templates" ? "Pick a template…" : "Find a note…"} />
 	</div>
 	<ul>
 		{#each items as it, i (it.label + (it.sub ?? ""))}

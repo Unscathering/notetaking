@@ -157,7 +157,7 @@
 
 {#if ws.modal === "settings"}
 	<Settings {ms} onclose={() => (ws.modal = null)} />
-{:else if ws.modal === "palette" || ws.modal === "switcher"}
+{:else if ws.modal === "palette" || ws.modal === "switcher" || ws.modal === "templates"}
 	{#key ws.modal}
 		<Palette mode={ws.modal} {ms} />
 	{/key}

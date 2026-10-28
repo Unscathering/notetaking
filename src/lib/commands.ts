@@ -10,6 +10,7 @@ import { helpHooks } from "./ai/writer";
 import { activeEditor } from "./editor/active";
 import { startHelp } from "./editor/writingHelp";
 import type { Mode } from "./ai/proofread";
+import { today } from "./templates";
 
 /** Writing help on the selection, or the whole note if nothing is selected. */
 const help = (mode: Mode) => () => {
@@ -48,6 +49,9 @@ export const COMMANDS: Command[] = [
 	{ id: "rewrite", label: "Rewrite the selection", icon: "pencil", run: help("rewrite") },
 	{ id: "new-note", label: "New note", icon: "pencil", keys: "Ctrl+N", run: () => ws.newNote() },
 	{ id: "new-board", label: "New board", icon: "board", keys: "Ctrl+Shift+B", run: () => ws.newBoard() },
+	{ id: "today", label: "Today's note", icon: "calendar", keys: "Ctrl+Shift+D", run: () => today() },
+	{ id: "yesterday", label: "Yesterday's note", icon: "calendar", run: () => today(-1) },
+	{ id: "template", label: "New note from a template", icon: "layers", keys: "Ctrl+Shift+N", run: () => (ws.modal = "templates") },
 	{ id: "new-folder", label: "New folder", icon: "folderPlus", run: () => ws.newFolder() },
 	{ id: "caves", label: "Switch cave", icon: "cave", keys: "Ctrl+Shift+O", run: () => (ws.modal = "caves") },
 	{ id: "appearance", label: "Appearance", icon: "palette", keys: "Ctrl+,", run: () => (ws.modal = ws.modal === "settings" ? null : "settings") },

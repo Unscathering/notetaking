@@ -17,7 +17,7 @@ import { readProps, type NoteProps } from "./notes";
 import { newBoardText } from "./board";
 
 export type Panel = "files" | "search" | "tags";
-export type Modal = "palette" | "switcher" | "caves" | "settings";
+export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings";
 
 class Workspace {
 	cave: Cave | null = $state(null);

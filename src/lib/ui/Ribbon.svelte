@@ -5,7 +5,7 @@
 	import { aiPanel } from "../ai/panel.svelte";
 	import { icon } from "./icons";
 
-	const top = ["home", "files", "search", "tags", "ai", "new-note", "new-board", "palette"].map(command);
+	const top = ["home", "files", "search", "tags", "ai", "today", "new-note", "new-board", "palette"].map(command);
 	const bottom = ["caves", "appearance"].map(command);
 
 	const isOn = (id: string) =>

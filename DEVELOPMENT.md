@@ -49,6 +49,10 @@ check again before a public launch.
   `.basalt/cave.json` inside the cave.
 - `src/lib/notes.ts`: note properties (description, tags, banner) and
   search. `src/lib/board.ts`: boards (Markdown with `basalt: board`).
+- `src/lib/templates.ts`: templates (notes in the cave's `Templates` folder,
+  plus built-in ones, with `{{date}}`-style placeholders) and daily notes
+  (`Daily/2026-10-28.md`, made from the "Daily note" template). The picker
+  is the palette's "templates" mode.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
@@ -142,7 +146,8 @@ Ctrl+Shift+B new board, Ctrl+Shift+E files, Ctrl+Shift+F search all notes,
 Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
 Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
 Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
-grammar (selection or whole note).
+grammar (selection or whole note), Ctrl+Shift+D today's note, Ctrl+Shift+N
+new note from a template.
 
 ## Status
 
