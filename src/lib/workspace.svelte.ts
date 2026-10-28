@@ -1,0 +1,251 @@
+// The app's shared state: the open cave, its notes, tabs and panels, and every
+// action that changes them. Components read from `ws` and call its methods.
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
+import {
+	baseName,
+	buildTree,
+	emptyMeta,
+	joinPath,
+	noteTitle,
+	openStartingCave,
+	parentOf,
+	type Cave,
+	type CaveMeta,
+	type EntryLook,
+} from "./cave";
+
+export type Panel = "files" | "search" | "tags";
+export type Modal = "palette" | "switcher" | "caves" | "settings";
+
+class Workspace {
+	cave: Cave | null = $state(null);
+	meta: CaveMeta = $state(emptyMeta());
+	files: string[] = $state([]);
+	folders: string[] = $state([]);
+	tree = $derived(buildTree(this.files, this.folders, this.meta));
+	tabs: string[] = $state([]);
+	active: string | null = $state(null);
+	texts = new SvelteMap<string, string>();
+	openFolders = new SvelteSet<string>();
+	panel: Panel = $state("files");
+	sidebarOpen = $state(true);
+	modal: Modal | null = $state(null);
+	saving = $state(false);
+	private timers = new Map<string, number>();
+
+	/** Notes in sidebar order. */
+	notes = $derived.by(() => {
+		const out: string[] = [];
+		const walk = (list: typeof this.tree) => list.forEach((e) => (e.kind === "file" ? out.push(e.path) : walk(e.children ?? [])));
+		walk(this.tree);
+		return out;
+	});
+
+	async load(cave: Cave | null) {
+		this.cave = cave;
+		this.tabs = [];
+		this.active = null;
+		this.texts.clear();
+		this.openFolders.clear();
+		if (!cave) return;
+		this.meta = await cave.readMeta();
+		await this.refresh();
+		for (const f of this.folders) if (!f.includes("/")) this.openFolders.add(f);
+		const start = this.meta.home && this.files.includes(this.meta.home) ? this.meta.home : this.notes[0];
+		if (start) await this.open(start);
+	}
+
+	async refresh() {
+		if (!this.cave) return;
+		[this.files, this.folders] = await Promise.all([this.cave.list(), this.cave.listFolders()]);
+	}
+
+	async saveMeta() {
+		await this.cave?.writeMeta($state.snapshot(this.meta) as CaveMeta);
+	}
+
+	async open(path: string) {
+		if (!this.cave) return;
+		if (!this.texts.has(path)) this.texts.set(path, await this.cave.read(path));
+		if (!this.tabs.includes(path)) {
+			const at = this.active ? this.tabs.indexOf(this.active) + 1 : this.tabs.length;
+			this.tabs = [...this.tabs.slice(0, at), path, ...this.tabs.slice(at)];
+		}
+		this.active = path;
+		// Show where the note lives in the sidebar.
+		for (let f = parentOf(path); f; f = parentOf(f)) this.openFolders.add(f);
+	}
+
+	closeTab(path: string) {
+		const i = this.tabs.indexOf(path);
+		this.tabs = this.tabs.filter((p) => p !== path);
+		if (this.active === path) this.active = this.tabs[Math.min(i, this.tabs.length - 1)] ?? null;
+	}
+
+	nextTab(step: number) {
+		if (!this.active || this.tabs.length < 2) return;
+		const i = this.tabs.indexOf(this.active);
+		void this.open(this.tabs[(i + step + this.tabs.length) % this.tabs.length]);
+	}
+
+	edited(path: string, text: string) {
+		this.texts.set(path, text);
+		this.saving = true;
+		window.clearTimeout(this.timers.get(path));
+		this.timers.set(
+			path,
+			window.setTimeout(async () => {
+				await this.cave?.write(path, text);
+				this.timers.delete(path);
+				this.saving = this.timers.size > 0;
+			}, 400)
+		);
+	}
+
+	/** Finds a note by a link's name ("Plan", "Projects/Plan" or "Plan.md"). */
+	resolve(target: string): string | null {
+		const want = target.trim().toLowerCase().replace(/\.md$/, "");
+		return (
+			this.files.find((p) => p.toLowerCase().replace(/\.md$/, "") === want) ??
+			this.files.find((p) => noteTitle(p).toLowerCase() === want.split("/").pop()) ??
+			null
+		);
+	}
+
+	/** Follows a [[link]]: opens the note, or makes it first. */
+	async follow(target: string) {
+		if (!this.cave) return;
+		const found = this.resolve(target);
+		if (found) return this.open(found);
+		const name = baseName(target);
+		const path = await this.cave.create(parentOf(target), name, `# ${name}\n\n`);
+		await this.refresh();
+		await this.open(path);
+	}
+
+	async newNote(folder = "", name = "Untitled", text?: string) {
+		if (!this.cave) return null;
+		const path = await this.cave.create(folder, name, text ?? `# ${name}\n\n`);
+		await this.refresh();
+		await this.open(path);
+		return path;
+	}
+
+	async newFolder(parent = "", name = "New folder") {
+		if (!this.cave) return null;
+		let path = joinPath(parent, name);
+		for (let n = 2; await this.cave.exists(path); n++) path = joinPath(parent, `${name} ${n}`);
+		await this.cave.mkdir(path);
+		if (parent) this.openFolders.add(parent);
+		await this.refresh();
+		return path;
+	}
+
+	/** Opens the cave's home note, making one the first time. */
+	async goHome() {
+		if (!this.cave) return;
+		if (this.meta.home && this.files.includes(this.meta.home)) return this.open(this.meta.home);
+		const path = this.files.includes("Home.md") ? "Home.md" : await this.cave.create("", "Home", "# Home\n\nThis is your home page. Link the notes you use most: [[Welcome]]\n");
+		await this.setHome(path);
+		await this.refresh();
+		await this.open(path);
+	}
+
+	async setHome(path: string) {
+		this.meta.home = path;
+		await this.saveMeta();
+	}
+
+	async setLook(path: string, look: EntryLook) {
+		const next = { ...this.meta.looks[path], ...look };
+		if (!next.color) delete next.color;
+		if (!next.icon) delete next.icon;
+		this.meta.looks = { ...this.meta.looks, [path]: next };
+		await this.saveMeta();
+	}
+
+	/**
+	 * Moves a note or folder into `folder`, placed before `before` (a name in that
+	 * folder) or at the end. Moving within the same folder just reorders it.
+	 */
+	async move(path: string, folder: string, before: string | null) {
+		if (!this.cave) return;
+		if (folder === path || folder.startsWith(`${path}/`)) return;
+		const from = parentOf(path), name = baseName(path);
+		let to = joinPath(folder, name);
+		if (from !== folder) {
+			if (await this.cave.exists(to)) return;
+			await this.cave.rename(path, to);
+			this.renamed(path, to);
+			this.meta.order[from] = (this.meta.order[from] ?? []).filter((n) => n !== name);
+		} else to = path;
+		// The folder's current order, with the moved item placed where it was dropped.
+		const siblings = this.childrenOf(folder).filter((n) => n !== name);
+		const at = before ? siblings.indexOf(before) : -1;
+		siblings.splice(at < 0 ? siblings.length : at, 0, name);
+		this.meta.order = { ...this.meta.order, [folder]: siblings };
+		await this.saveMeta();
+		await this.refresh();
+	}
+
+	async rename(path: string, newName: string) {
+		if (!this.cave || !newName.trim()) return;
+		const isFile = this.files.includes(path);
+		const clean = newName.trim().replace(/[\\/:*?"<>|]/g, "-");
+		const to = joinPath(parentOf(path), isFile ? `${clean.replace(/\.md$/i, "")}.md` : clean);
+		if (to === path || (await this.cave.exists(to))) return;
+		await this.cave.rename(path, to);
+		const order = this.meta.order[parentOf(path)];
+		if (order) this.meta.order[parentOf(path)] = order.map((n) => (n === baseName(path) ? baseName(to) : n));
+		this.renamed(path, to);
+		await this.saveMeta();
+		await this.refresh();
+	}
+
+	async remove(path: string) {
+		if (!this.cave) return;
+		await this.cave.remove(path);
+		for (const t of this.tabs) if (t === path || t.startsWith(`${path}/`)) this.closeTab(t);
+		await this.refresh();
+	}
+
+	/** Keeps tabs, texts, looks and the home note pointing at a moved path. */
+	private renamed(from: string, to: string) {
+		const swap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
+		this.tabs = this.tabs.map(swap);
+		if (this.active) this.active = swap(this.active);
+		for (const [p, t] of [...this.texts]) {
+			if (swap(p) !== p) {
+				this.texts.delete(p);
+				this.texts.set(swap(p), t);
+			}
+		}
+		const looks: CaveMeta["looks"] = {};
+		for (const [p, l] of Object.entries(this.meta.looks)) looks[swap(p)] = l;
+		this.meta.looks = looks;
+		if (this.meta.home) this.meta.home = swap(this.meta.home);
+		const order: CaveMeta["order"] = {};
+		for (const [f, names] of Object.entries(this.meta.order)) order[swap(f)] = names;
+		this.meta.order = order;
+		for (const f of [...this.openFolders]) {
+			if (swap(f) !== f) {
+				this.openFolders.delete(f);
+				this.openFolders.add(swap(f));
+			}
+		}
+	}
+
+	/** Names inside a folder, in the order the sidebar shows them. */
+	childrenOf(folder: string): string[] {
+		let list = this.tree;
+		for (const part of folder ? folder.split("/") : []) list = list.find((e) => e.name === part)?.children ?? [];
+		return list.map((e) => e.name);
+	}
+}
+
+export const ws = new Workspace();
+
+/** The cave to open when the app starts. */
+export function startWorkspace() {
+	void ws.load(openStartingCave());
+}

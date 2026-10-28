@@ -2,346 +2,145 @@
 	import { flip } from "svelte/animate";
 	import { fly } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
-	import { SvelteMap } from "svelte/reactivity";
 	import Editor from "./lib/editor/Editor.svelte";
-	import FileTree from "./lib/ui/FileTree.svelte";
+	import Sidebar from "./lib/ui/Sidebar.svelte";
+	import Ribbon from "./lib/ui/Ribbon.svelte";
+	import Palette from "./lib/ui/Palette.svelte";
+	import CaveSwitcher from "./lib/ui/CaveSwitcher.svelte";
 	import Settings from "./lib/ui/Settings.svelte";
-	import { ICONS } from "./lib/ui/icons";
+	import { icon } from "./lib/ui/icons";
+	import { COMMANDS, keyName } from "./lib/commands";
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
-	import { inDesktopApp, noteTitle, openStartingVault, pickVault, type Vault, type VaultEntry } from "./lib/vault";
+	import { noteTitle, pickCave } from "./lib/cave";
+	import { startWorkspace, ws } from "./lib/workspace.svelte";
 
 	trackTheme();
+	startWorkspace();
 	const ms = $derived(motionMs(theme));
+	const words = $derived(ws.active ? (ws.texts.get(ws.active) ?? "").split(/\s+/).filter(Boolean).length : 0);
 
-	let vault: Vault | null = $state(openStartingVault());
-	let tree: VaultEntry[] = $state([]);
-	let openFolders = $state(new Set<string>());
-	let tabs: string[] = $state([]);
-	let active: string | null = $state(null);
-	let texts = new SvelteMap<string, string>();
-	let sidebarOpen = $state(true);
-	let settingsOpen = $state(false);
-	let filter = $state("");
-	let saving = $state(false);
 	let editorHost: HTMLElement | undefined = $state();
-	const timers = new Map<string, number>();
+	let shown: string | null = null;
 
-	const allNotes = $derived.by(() => {
-		const out: string[] = [];
-		const walk = (list: VaultEntry[]) => list.forEach((e) => (e.kind === "file" ? out.push(e.path) : walk(e.children ?? [])));
-		walk(tree);
-		return out;
-	});
-	const filtered = $derived(filter.trim() ? allNotes.filter((p) => p.toLowerCase().includes(filter.trim().toLowerCase())) : null);
-	const words = $derived(active ? (texts.get(active) ?? "").split(/\s+/).filter(Boolean).length : 0);
-
-	async function refresh() {
-		if (!vault) return;
-		tree = await vault.list();
-	}
-
-	// A new vault: load its notes and open the first one.
+	// A soft fade and lift whenever another note comes to the front.
 	$effect(() => {
-		const v = vault;
-		if (!v) return;
-		void (async () => {
-			tree = await v.list();
-			openFolders = new Set(tree.filter((e) => e.kind === "folder").map((e) => e.path));
-			const first = allNotes.find((p) => /welcome/i.test(p)) ?? allNotes[0];
-			if (first) await openNote(first);
-		})();
+		const a = ws.active;
+		if (a && shown && a !== shown) editorHost?.animate([{ opacity: 0.35, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: ms, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+		shown = a;
 	});
 
-	async function openNote(path: string) {
-		if (!vault) return;
-		if (!texts.has(path)) texts.set(path, await vault.read(path));
-		if (!tabs.includes(path)) tabs = active ? [...tabs.slice(0, tabs.indexOf(active) + 1), path, ...tabs.slice(tabs.indexOf(active) + 1)] : [...tabs, path];
-		if (active !== path) {
-			active = path;
-			editorHost?.animate([{ opacity: 0.35, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: ms, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
-		}
-	}
-
-	function closeTab(path: string) {
-		const i = tabs.indexOf(path);
-		tabs = tabs.filter((p) => p !== path);
-		if (active === path) active = tabs[Math.min(i, tabs.length - 1)] ?? null;
-	}
-
-	function edited(path: string, text: string) {
-		texts.set(path, text);
-		saving = true;
-		window.clearTimeout(timers.get(path));
-		timers.set(path, window.setTimeout(async () => {
-			await vault?.write(path, text);
-			timers.delete(path);
-			saving = timers.size > 0;
-		}, 400));
-	}
-
-	/** Follows a [[link]]: finds the note by name, or makes it. */
-	async function followLink(target: string) {
-		if (!vault) return;
-		const want = target.toLowerCase().replace(/\.md$/, "");
-		const found = allNotes.find((p) => p.toLowerCase().replace(/\.md$/, "") === want) ?? allNotes.find((p) => noteTitle(p).toLowerCase() === want.split("/").pop());
-		if (found) return openNote(found);
-		const cut = target.lastIndexOf("/");
-		const path = await vault.create(cut > 0 ? target.slice(0, cut) : "", target.slice(cut + 1), `# ${target.slice(cut + 1)}\n\n`);
-		await refresh();
-		await openNote(path);
-	}
-
-	async function newNote() {
-		if (!vault) return;
-		const path = await vault.create("", "Untitled", "# Untitled\n\n");
-		await refresh();
-		await openNote(path);
-	}
-
-	async function chooseVault() {
-		const v = await pickVault();
-		if (!v) return;
-		tabs = [];
-		active = null;
-		texts.clear();
-		vault = v;
-	}
-
-	function toggleFolder(path: string) {
-		const next = new Set(openFolders);
-		if (next.has(path)) next.delete(path);
-		else next.add(path);
-		openFolders = next;
+	async function chooseCave() {
+		const cave = await pickCave();
+		if (cave) await ws.load(cave);
 	}
 
 	function onkeydown(e: KeyboardEvent) {
-		const mod = e.ctrlKey || e.metaKey;
-		if (e.key === "Escape" && settingsOpen) settingsOpen = false;
-		else if (mod && e.key === ",") settingsOpen = !settingsOpen;
-		else if (mod && e.key.toLowerCase() === "n") void newNote();
-		else if (mod && e.key === "\\") sidebarOpen = !sidebarOpen;
-		else if (mod && e.key.toLowerCase() === "w" && active) closeTab(active);
-		else if (mod && e.key === "Tab" && tabs.length > 1 && active) {
-			const i = tabs.indexOf(active);
-			void openNote(tabs[(i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length]);
-		} else return;
+		const key = keyName(e);
+		if (key === "Escape" && ws.modal) {
+			ws.modal = null;
+		} else if (key === "Ctrl+Tab" || key === "Ctrl+Shift+Tab") {
+			ws.nextTab(e.shiftKey ? -1 : 1);
+		} else {
+			const c = COMMANDS.find((c) => c.keys === key);
+			if (!c) return;
+			void c.run();
+		}
 		e.preventDefault();
 	}
 </script>
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:sidebar-closed={!sidebarOpen}>
+<div class="app" class:sidebar-closed={!ws.sidebarOpen}>
+	<Ribbon />
 	<aside class="sidebar">
-		<div class="sidebar-inner">
-			<header class="vault-head">
-				<button class="vault-name" onclick={chooseVault} title={inDesktopApp ? "Open another folder" : "Sample notes"}>
-					<span class="vault-icon">{@html ICONS.vault}</span>
-					<span>{vault?.name ?? "No folder"}</span>
-				</button>
-				<button class="icon" onclick={newNote} title="New note (Ctrl+N)">{@html ICONS.plus}</button>
-			</header>
-			<label class="filter">
-				<span>{@html ICONS.search}</span>
-				<input placeholder="Find a note" bind:value={filter} />
-			</label>
-			<nav class="files">
-				{#if filtered}
-					{#each filtered as path (path)}
-						<button class="found" class:is-active={active === path} onclick={() => openNote(path)}>
-							<span>{noteTitle(path)}</span>
-							<small>{path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""}</small>
-						</button>
-					{:else}
-						<p class="empty">No notes match.</p>
-					{/each}
-				{:else}
-					<FileTree entries={tree} {active} open={openFolders} {ms} onpick={openNote} ontoggle={toggleFolder} />
-				{/if}
-			</nav>
-			<footer class="sidebar-foot">
-				<button class="icon" onclick={() => (settingsOpen = true)} title="Appearance (Ctrl+,)">{@html ICONS.settings}</button>
-			</footer>
-		</div>
+		<Sidebar {ms} />
 	</aside>
 
 	<main class="main">
 		<div class="tabbar">
-			<button class="icon" onclick={() => (sidebarOpen = !sidebarOpen)} title="Show or hide the sidebar (Ctrl+\)">{@html ICONS.sidebar}</button>
 			<div class="tabs" role="tablist">
-				{#each tabs as path (path)}
-					<div class="tab" class:is-active={active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={active === path}>
-						<button class="tab-label" onclick={() => openNote(path)} onauxclick={(e) => e.button === 1 && closeTab(path)}>{noteTitle(path)}</button>
-						<button class="tab-close" onclick={() => closeTab(path)} title="Close (Ctrl+W)">{@html ICONS.x}</button>
+				{#each ws.tabs as path (path)}
+					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={ws.active === path}>
+						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>{noteTitle(path)}</button>
+						<button class="tab-close" onclick={() => ws.closeTab(path)} title="Close (Ctrl+W)">{@html icon("x", 14)}</button>
 					</div>
 				{/each}
 			</div>
 		</div>
 
 		<div class="editor-area" bind:this={editorHost}>
-			{#if !vault}
+			{#if !ws.cave}
 				<div class="start">
 					<h1>Basalt</h1>
-					<p>Your notes, as plain Markdown files in a folder you choose.</p>
-					<button class="primary" onclick={chooseVault}>Choose a notes folder</button>
+					<p>Your notes live in caves: plain Markdown files in a folder you choose.</p>
+					<button class="primary" onclick={chooseCave}>Choose a folder for your first cave</button>
 				</div>
-			{:else if active}
-				<Editor path={active} text={texts.get(active) ?? ""} onchange={edited} onopenlink={followLink} />
+			{:else if ws.active}
+				<Editor path={ws.active} text={ws.texts.get(ws.active) ?? ""} onchange={(p, t) => ws.edited(p, t)} onopenlink={(t) => ws.follow(t)} />
 			{:else}
 				<div class="start">
 					<p>No note open.</p>
-					<button class="primary" onclick={newNote}>New note</button>
+					<button class="primary" onclick={() => ws.newNote()}>New note</button>
 				</div>
 			{/if}
 		</div>
 
 		<footer class="status">
 			<span>{words} {words === 1 ? "word" : "words"}</span>
-			<span class="saved" class:is-saving={saving}>{saving ? "Saving…" : "Saved"}</span>
+			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>
 	</main>
 </div>
 
-{#if settingsOpen}
-	<Settings {ms} onclose={() => (settingsOpen = false)} />
+{#if ws.modal === "settings"}
+	<Settings {ms} onclose={() => (ws.modal = null)} />
+{:else if ws.modal === "palette" || ws.modal === "switcher"}
+	{#key ws.modal}
+		<Palette mode={ws.modal} {ms} />
+	{/key}
+{:else if ws.modal === "caves"}
+	<CaveSwitcher {ms} />
 {/if}
 
 <style>
 	.app {
 		display: grid;
-		grid-template-columns: var(--sidebar-width) 1fr;
+		grid-template-columns: 48px var(--sidebar-width) 1fr;
 		grid-template-rows: minmax(0, 1fr);
 		height: 100vh;
 		transition: grid-template-columns var(--dur) var(--ease);
 	}
 	.app.sidebar-closed {
-		grid-template-columns: 0px 1fr;
+		grid-template-columns: 48px 0px 1fr;
 	}
 	.sidebar {
 		min-height: 0;
 		overflow: hidden;
-		background: var(--panel);
+		background: var(--part-sidebar-bg, var(--panel));
 		border-right: 1px solid var(--border);
 	}
 	.sidebar-closed .sidebar {
 		border-right-color: transparent;
 	}
-	.sidebar-inner {
-		display: flex;
-		flex-direction: column;
-		width: var(--sidebar-width);
-		height: 100%;
-		transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
-	}
-	.sidebar-closed .sidebar-inner {
+	.sidebar-closed .sidebar :global(.sidebar-inner) {
 		opacity: 0;
 		transform: translateX(-16px);
-	}
-	.vault-head {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		padding: calc(12px * var(--density)) 10px 6px 12px;
-	}
-	.vault-name {
-		display: flex;
-		flex: 1;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
-		padding: 6px 8px;
-		border: 0;
-		border-radius: calc(var(--radius) * 0.75);
-		background: transparent;
-		color: var(--heading);
-		font: inherit;
-		font-weight: 650;
-		text-align: left;
-		cursor: pointer;
-		transition: background-color var(--dur) var(--ease);
-	}
-	.vault-name:hover {
-		background: var(--hover);
-	}
-	.vault-icon {
-		display: inline-flex;
-		color: var(--accent);
-	}
-	.filter {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin: 4px 12px 8px;
-		padding: 6px 10px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: var(--bg);
-		color: var(--muted);
-		transition: border-color var(--dur) var(--ease);
-	}
-	.filter:focus-within {
-		border-color: var(--accent);
-	}
-	.filter span {
-		display: inline-flex;
-	}
-	.filter input {
-		flex: 1;
-		min-width: 0;
-		border: 0;
-		outline: 0;
-		background: transparent;
-		color: var(--text);
-		font: inherit;
-	}
-	.files {
-		flex: 1;
-		overflow-y: auto;
-		padding: 2px 8px 12px;
-	}
-	.found {
-		display: flex;
-		flex-direction: column;
-		width: 100%;
-		padding: 6px 10px;
-		border: 0;
-		border-radius: calc(var(--radius) * 0.75);
-		background: transparent;
-		color: var(--text);
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.found:hover,
-	.found.is-active {
-		background: var(--hover);
-	}
-	.found small {
-		color: var(--muted);
-		font-size: 12px;
-	}
-	.empty {
-		padding: 8px 12px;
-		color: var(--muted);
-	}
-	.sidebar-foot {
-		display: flex;
-		padding: 8px 10px 10px;
-		border-top: 1px solid var(--border);
 	}
 	.main {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 		min-height: 0;
-		background: var(--bg);
+		background: var(--part-page-bg, var(--bg));
 	}
 	.tabbar {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		min-height: 41px;
 		padding: 8px 10px 0;
+		background: var(--part-tabs-bg, transparent);
 		border-bottom: 1px solid var(--border);
 	}
 	.tabs {
@@ -365,7 +164,7 @@
 	}
 	.tab.is-active {
 		color: var(--heading);
-		background: var(--raised);
+		background: var(--part-tab-active, var(--raised));
 		box-shadow: inset 0 -2px 0 var(--accent);
 	}
 	.tab-label {
@@ -450,19 +249,5 @@
 	.primary:hover {
 		transform: translateY(-1px);
 		filter: brightness(1.08);
-	}
-	.icon {
-		display: inline-flex;
-		padding: 6px;
-		border: 0;
-		border-radius: calc(var(--radius) * 0.75);
-		background: transparent;
-		color: var(--muted);
-		cursor: pointer;
-		transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
-	}
-	.icon:hover {
-		background: var(--hover);
-		color: var(--text);
 	}
 </style>

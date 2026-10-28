@@ -1,0 +1,90 @@
+<script lang="ts">
+	// The sidebar: the cave's files (or search and tags, picked from the command bar).
+	import { inDesktopApp } from "../cave";
+	import { ws } from "../workspace.svelte";
+	import FileTree from "./FileTree.svelte";
+	import { icon } from "./icons";
+
+	let { ms }: { ms: number } = $props();
+</script>
+
+<div class="sidebar-inner">
+	<header class="head">
+		<button class="cave-name" onclick={() => (ws.modal = "caves")} title={inDesktopApp ? "Switch cave" : "The sample cave"}>
+			<span class="cave-icon">{@html icon("cave")}</span>
+			<span>{ws.cave?.name ?? "No cave"}</span>
+		</button>
+		<button class="icon" onclick={() => ws.newNote()} title="New note (Ctrl+N)">{@html icon("pencil")}</button>
+		<button class="icon" onclick={() => ws.newFolder()} title="New folder">{@html icon("folderPlus")}</button>
+	</header>
+	{#if ws.panel === "files"}
+		<nav class="files">
+			<FileTree entries={ws.tree} {ms} />
+		</nav>
+	{:else}
+		<p class="soon">{ws.panel === "search" ? "Search" : "Tags"} is coming in the next step.</p>
+	{/if}
+</div>
+
+<style>
+	.sidebar-inner {
+		display: flex;
+		flex-direction: column;
+		width: var(--sidebar-width);
+		height: 100%;
+		transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+	}
+	.head {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding: calc(10px * var(--density)) 8px 8px 10px;
+	}
+	.cave-name {
+		display: flex;
+		flex: 1;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		padding: 6px 8px;
+		border: 0;
+		border-radius: calc(var(--radius) * 0.75);
+		background: transparent;
+		color: var(--heading);
+		font: inherit;
+		font-weight: 650;
+		text-align: left;
+		cursor: pointer;
+		transition: background-color var(--dur) var(--ease);
+	}
+	.cave-name:hover {
+		background: var(--hover);
+	}
+	.cave-icon {
+		display: inline-flex;
+		color: var(--accent);
+	}
+	.files {
+		flex: 1;
+		overflow-y: auto;
+		padding: 2px 8px 12px;
+	}
+	.soon {
+		padding: 12px 18px;
+		color: var(--muted);
+	}
+	.icon {
+		display: inline-flex;
+		padding: 6px;
+		border: 0;
+		border-radius: calc(var(--radius) * 0.75);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+		transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.icon:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+</style>

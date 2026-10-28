@@ -1,5 +1,21 @@
-// The notes shown outside the desktop app, and a tour of what the editor does.
+// The sample cave shown outside the desktop app, and a tour of what Basalt does.
+import type { CaveMeta } from "./types";
+
+export const SAMPLE_META: CaveMeta = { home: "Home.md", order: { "": ["Home.md", "Welcome.md", "Writing in Basalt.md"] }, looks: { Ideas: { color: "#e8794a", icon: "lightbulb" }, Journal: { color: "#7c8cff", icon: "book" }, Reading: { color: "#7fc48b", icon: "library" } } };
+
 export const SAMPLE_NOTES: Record<string, string> = {
+	"Home.md": `---
+description: Where every day starts.
+tags: [home]
+---
+# Home
+
+Good to see you. Pick up where you left off:
+
+- [[Welcome]] for the basics
+- [[Writing in Basalt]] for a tour of the editor
+- [[Ideas/Garden plan]] and [[Ideas/App ideas]]
+`,
 	"Welcome.md": `# Welcome to Basalt
 
 Basalt keeps your notes as plain **Markdown files** in a folder you choose, so they are always yours.
