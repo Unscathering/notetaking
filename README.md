@@ -6,12 +6,17 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours. 
 
 ## What it does so far
 
-- Opens any folder of notes, with a sidebar and tabs
+- Caves: folders of notes you can switch between, each with its own home page
+- A command bar, a command palette (Ctrl+P) and a quick note switcher (Ctrl+O)
 - Shows formatting as you type, and hides the Markdown symbols when you move away
-- `[[Links]]` between notes; click one to open it, or to create the note if it doesn't exist yet
-- Checkboxes you can tick, code blocks with highlighting, quotes and lists
-- Saves as you type
-- An Appearance panel (Ctrl+,) for colors, fonts, text size, line spacing, width, corners, spacing and animation style and speed, all changing live
+- `[[Links]]` between notes, with suggestions as you type
+- A `/` menu for headings, lists, checklists, callouts, tables, code, images and more
+- Tables you edit cell by cell, pasted and dropped images, callout boxes
+- Drag paragraphs, files and folders into any order; color and icon your folders
+- Descriptions and tags on every note, a tags panel, and search across all notes
+- Boards like Trello: lists, cards, colors, due dates, descriptions and checklists
+- Focus mode, typewriter scrolling and dimming of other paragraphs
+- An Appearance panel (Ctrl+,) for colors, fonts, sizes, spacing, corners and animation, all live
 - Five built-in themes, and themes you can save and share as one file
 
 ## Download

@@ -4,6 +4,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { FONT_CHOICES, PRESETS, cloneTheme, type MotionStyle, type Theme } from "../theme/theme";
 	import { theme, useTheme } from "../theme/store.svelte";
+	import { writing } from "../writing.svelte";
 	import { ICONS } from "./icons";
 
 	interface Props {
@@ -103,6 +104,14 @@
 	</section>
 
 	<section>
+		<h3>Writing</h3>
+		<label class="toggle"><input type="checkbox" bind:checked={writing.typewriter} /><span><b>Typewriter scrolling</b>Keeps the line you're on in the middle of the screen.</span></label>
+		<label class="toggle"><input type="checkbox" bind:checked={writing.dimOthers} /><span><b>Dim other paragraphs</b>Fades everything except the paragraph you're in.</span></label>
+		<label class="toggle"><input type="checkbox" bind:checked={writing.spellcheck} /><span><b>Spell check</b>Underlines misspelled words.</span></label>
+		<label class="toggle"><input type="checkbox" bind:checked={writing.focus} /><span><b>Focus mode</b>Hides everything but the note. Ctrl+Shift+Enter, Esc to leave.</span></label>
+	</section>
+
+	<section>
 		<h3>Motion</h3>
 		<div class="segmented">
 			{#each MOTION as [style, label] (style)}
@@ -155,6 +164,28 @@
 	section {
 		padding: 18px 0 6px;
 		border-bottom: 1px solid var(--border);
+	}
+	.toggle {
+		display: flex;
+		gap: 10px;
+		align-items: flex-start;
+		margin-bottom: 12px;
+		font-size: 13px;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.toggle b {
+		display: block;
+		margin-bottom: 1px;
+		color: var(--text);
+		font-weight: 600;
+	}
+	.toggle input {
+		flex: none;
+		margin-top: 2px;
+		accent-color: var(--accent);
+		width: 15px;
+		height: 15px;
 	}
 	section:last-child {
 		border-bottom: 0;

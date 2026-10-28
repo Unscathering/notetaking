@@ -10,6 +10,9 @@ import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@cod
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
 import { noteHeader } from "./properties";
+import { suggestions, type SuggestHooks } from "./suggest";
+import { richBlocks, type BlockHooks } from "./blocks";
+import { blockHandles, dimOthers, pasteAndDrop, typewriter, type BehaviorHooks } from "./behaviors";
 
 const highlight = HighlightStyle.define([
 	{ tag: t.heading, color: "var(--heading)", fontWeight: "700" },
@@ -38,7 +41,7 @@ const look = EditorView.theme({
 		padding: "calc(48px * var(--density)) calc(28px * var(--density)) 40vh",
 		caretColor: "var(--accent)",
 	},
-	".cm-line": { padding: "0 2px" },
+	".cm-line": { padding: "0 2px", transition: "opacity var(--dur) var(--ease)" },
 	".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px", transition: "left 80ms ease-out, top 80ms ease-out" },
 	"&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--accent-soft) !important" },
 	".cm-placeholder": { color: "var(--muted)" },
@@ -76,12 +79,53 @@ const look = EditorView.theme({
 	".cm-tag-x:hover": { opacity: "1" },
 	".cm-tag-add": { width: "70px", padding: "2px 6px", border: "1px dashed var(--border)", borderRadius: "999px", outline: "0", background: "transparent", color: "var(--text)", fontSize: "0.8em" },
 	".cm-tag-add:focus": { borderColor: "var(--accent)", width: "120px" },
+	".cm-hashtag": { padding: "1px 7px", borderRadius: "999px", background: "var(--accent-soft)", color: "var(--accent)", fontSize: "0.88em", fontWeight: "600" },
+	".cm-callout": { padding: "0 16px !important", background: "color-mix(in srgb, var(--callout) 12%, transparent)", borderLeft: "3px solid var(--callout)", "--callout": "var(--link)" },
+	".cm-callout-first": { paddingTop: "8px !important", borderTopRightRadius: "var(--radius)", fontWeight: "650", color: "var(--callout)" },
+	".cm-callout-last": { paddingBottom: "8px !important", borderBottomRightRadius: "var(--radius)" },
+	".cm-callout-tip, .cm-callout-success": { "--callout": "#5fb878" },
+	".cm-callout-warning, .cm-callout-question": { "--callout": "#e5a84b" },
+	".cm-callout-danger": { "--callout": "#e05d5d" },
+	".cm-callout-note, .cm-callout-info": { "--callout": "#5b9bf0" },
+	".cm-callout-quote": { "--callout": "var(--muted)" },
+	".cm-callout-label": { color: "var(--callout)" },
+	".cm-callout, .cm-callout *": { fontStyle: "normal" },
+	".cm-table-wrap": { margin: "6px 0 10px", overflowX: "auto" },
+	".cm-table": { borderCollapse: "separate", borderSpacing: "0", width: "100%", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden", fontSize: "0.95em" },
+	".cm-table th, .cm-table td": { padding: "7px 12px", borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)", outline: "none", minWidth: "60px", verticalAlign: "top", transition: "background-color var(--dur) var(--ease)" },
+	".cm-table th": { background: "var(--raised)", color: "var(--heading)", fontWeight: "650", textAlign: "left" },
+	".cm-table tr:last-child td": { borderBottom: "0" },
+	".cm-table th:last-child, .cm-table td:last-child": { borderRight: "0" },
+	".cm-table td:focus, .cm-table th:focus": { background: "var(--accent-soft)", boxShadow: "inset 0 0 0 1.5px var(--accent)" },
+	".cm-table-bar": { display: "flex", gap: "6px", marginTop: "6px", opacity: "0", transition: "opacity var(--dur) var(--ease)" },
+	".cm-table-wrap:hover .cm-table-bar, .cm-table-wrap:focus-within .cm-table-bar": { opacity: "1" },
+	".cm-table-bar button": { padding: "3px 9px", border: "1px solid var(--border)", borderRadius: "calc(var(--radius) * 0.6)", background: "var(--raised)", color: "var(--muted)", font: "12px var(--font-ui)", cursor: "pointer" },
+	".cm-table-bar button:hover": { color: "var(--text)", borderColor: "var(--accent)" },
+	".cm-image": { margin: "8px 0", textAlign: "center", cursor: "pointer" },
+	".cm-image img": { maxWidth: "100%", maxHeight: "70vh", borderRadius: "var(--radius)", boxShadow: "0 8px 30px rgba(0,0,0,0.25)" },
+	".cm-image figcaption": { marginTop: "6px", color: "var(--muted)", fontSize: "0.85em" },
+	".cm-image.is-missing": { padding: "18px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--muted)" },
+	".cm-image.is-missing::after": { content: "'Image not found'" },
+	".cm-block-handle": { position: "absolute", zIndex: "5", display: "flex", alignItems: "center", justifyContent: "center", width: "20px", height: "1.5em", marginTop: "0.1em", borderRadius: "5px", color: "var(--muted)", opacity: "0", cursor: "grab", transition: "opacity var(--dur) var(--ease), background-color var(--dur) var(--ease)" },
+	".cm-block-handle.is-shown": { opacity: "0.7" },
+	".cm-block-handle:hover, .cm-block-handle.is-dragging": { opacity: "1", background: "var(--hover)", color: "var(--text)" },
+	"&.cm-moving-block, &.cm-moving-block *": { cursor: "grabbing !important" },
+	".cm-drop-line": { position: "absolute", zIndex: "5", height: "3px", marginTop: "-1.5px", borderRadius: "3px", background: "var(--accent)", opacity: "0", pointerEvents: "none", transition: "top 80ms ease-out, opacity var(--dur) var(--ease)" },
+	".cm-drop-line.is-shown": { opacity: "1" },
+	".cm-dimmed": { opacity: "0.3", transition: "opacity var(--dur) var(--ease)" },
+	".cm-tooltip.cm-tooltip-autocomplete": { padding: "4px", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--raised)", boxShadow: "0 14px 34px rgba(0,0,0,0.35)", fontFamily: "var(--font-ui)" },
+	".cm-tooltip-autocomplete > ul": { maxHeight: "300px !important", fontFamily: "var(--font-ui) !important" },
+	".cm-tooltip-autocomplete > ul > li": { padding: "6px 10px !important", borderRadius: "calc(var(--radius) * 0.7)", color: "var(--text)", lineHeight: "1.3" },
+	".cm-tooltip-autocomplete > ul > li[aria-selected]": { background: "var(--accent-soft) !important", color: "var(--text) !important" },
+	".cm-completionDetail": { marginLeft: "12px", color: "var(--muted)", fontStyle: "normal", fontSize: "0.85em" },
+	".cm-completionMatchedText": { textDecoration: "none", color: "var(--accent)", fontWeight: "650" },
+	".cm-completionInfo": { display: "none" },
 	".cm-panels": { backgroundColor: "var(--panel)", color: "var(--text)", borderColor: "var(--border)" },
 	".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--accent) 30%, transparent)" },
 	".cm-selectionMatch": { backgroundColor: "var(--hover)" },
 });
 
-export interface EditorHooks {
+export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks {
 	onChange(text: string): void;
 	openLink(target: string): void;
 }
@@ -101,6 +145,12 @@ export function editorExtensions(hooks: EditorHooks): Extension[] {
 		syntaxHighlighting(highlight),
 		livePreview,
 		noteHeader,
+		richBlocks(hooks),
+		suggestions(hooks),
+		blockHandles,
+		pasteAndDrop(hooks),
+		typewriter,
+		dimOthers,
 		wikilinkClicks(hooks.openLink),
 		look,
 		placeholder("Start writing…"),

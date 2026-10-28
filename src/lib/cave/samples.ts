@@ -34,6 +34,9 @@ Start with [[Writing in Basalt]] for a quick tour.
 
 Formatting shows as you type. The symbols hide when your cursor leaves the line.
 
+> [!tip] Press / on an empty line
+> A menu of everything you can add appears: headings, tables, callouts, images and more. Type [[ to link a note.
+
 ## Text
 
 You can write **bold**, *italic*, ~~struck through~~ and \`inline code\`.
@@ -56,6 +59,18 @@ function hello(name) {
   return \`Hello, \${name}!\`;
 }
 \`\`\`
+
+## Tables
+
+Click a cell to edit it. Tab moves to the next one.
+
+| Plant | Water | Sun |
+| --- | --- | --- |
+| Basil | Daily | Full |
+| Mint | Often | Some shade |
+
+> [!warning] Moving things around
+> Hover a paragraph and drag the dots on its left to move it.
 
 Back to [[Welcome]].
 `,

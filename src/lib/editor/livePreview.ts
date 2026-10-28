@@ -19,6 +19,23 @@ class BulletWidget extends WidgetType {
 	}
 }
 
+const CALLOUT_ICONS: Record<string, string> = { note: "✎", info: "ℹ", tip: "✦", success: "✓", warning: "⚠", danger: "⛔", question: "?", quote: "❝" };
+
+class CalloutLabelWidget extends WidgetType {
+	constructor(private kind: string) {
+		super();
+	}
+	eq(other: CalloutLabelWidget) {
+		return other.kind === this.kind;
+	}
+	toDOM() {
+		const s = document.createElement("span");
+		s.className = "cm-callout-label";
+		s.textContent = `${CALLOUT_ICONS[this.kind] ?? "✎"} `;
+		return s;
+	}
+}
+
 /** The language name shown at the top of a code block in place of its ``` fence. */
 class CodeLabelWidget extends WidgetType {
 	constructor(private label: string) {
@@ -96,12 +113,22 @@ function build(view: EditorView): DecorationSet {
 				} else if (name === "CodeMark" && node.node.parent?.name === "InlineCode" && !isActive(node.from)) {
 					decos.push(hide.range(node.from, node.to));
 				} else if (name === "Blockquote") {
+					// "> [!tip] Title" makes a colored callout box instead of a plain quote.
+					const first = state.doc.lineAt(node.from);
+					const callout = /^>\s*\[!(\w+)\]/.exec(first.text);
+					const kind = callout ? callout[1].toLowerCase() : null;
 					for (let pos = node.from; pos <= node.to; ) {
 						const line = state.doc.lineAt(pos);
-						decos.push(lineClass("cm-quote").range(line.from));
+						const edge = (line.from === first.from ? " cm-callout-first" : "") + (line.to >= node.to ? " cm-callout-last" : "");
+						decos.push(lineClass(kind ? `cm-callout cm-callout-${kind}${edge}` : "cm-quote").range(line.from));
 						pos = line.to + 1;
 					}
-				} else if (name === "QuoteMark" && !isActive(node.from)) {
+					if (callout && !isActive(first.from)) {
+						const markEnd = first.from + callout[0].length;
+						decos.push(Decoration.replace({ widget: new CalloutLabelWidget(kind!) }).range(first.from, markEnd));
+					}
+				} else if (name === "QuoteMark" && !isActive(node.from) && !/^>\s*\[!\w+\]/.test(state.doc.lineAt(node.from).text)) {
+					// (A callout's first line is covered by its label instead.)
 					const end = Math.min(node.to + 1, state.doc.lineAt(node.from).to);
 					decos.push(hide.range(node.from, end));
 				} else if (name === "FencedCode") {
@@ -146,8 +173,17 @@ function build(view: EditorView): DecorationSet {
 			},
 		});
 
-		// [[Wiki links]] between notes.
+		// [[Wiki links]] between notes, and #tags.
 		const text = state.doc.sliceString(from, to);
+		for (const m of text.matchAll(/(^|\s)(#[\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu)) {
+			const start = from + m.index! + m[1].length;
+			const line = state.doc.lineAt(start);
+			// Not headings ("# Title") or code.
+			if (/^#{1,6}\s/.test(line.text) && start === line.from) continue;
+			const inside = syntaxTree(state).resolveInner(start, 1).name;
+			if (/Code|URL/.test(inside)) continue;
+			decos.push(Decoration.mark({ class: "cm-hashtag" }).range(start, start + m[2].length));
+		}
 		for (const m of text.matchAll(WIKILINK)) {
 			const start = from + m.index!, end = start + m[0].length;
 			const target = m[1].trim();

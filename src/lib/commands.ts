@@ -2,6 +2,7 @@
 // and keyboard shortcuts all come from here.
 import type { IconName } from "./ui/icons";
 import { ws } from "./workspace.svelte";
+import { writing } from "./writing.svelte";
 
 export interface Command {
 	id: string;
@@ -32,6 +33,9 @@ export const COMMANDS: Command[] = [
 	{ id: "caves", label: "Switch cave", icon: "cave", keys: "Ctrl+Shift+O", run: () => (ws.modal = "caves") },
 	{ id: "appearance", label: "Appearance", icon: "palette", keys: "Ctrl+,", run: () => (ws.modal = ws.modal === "settings" ? null : "settings") },
 	{ id: "sidebar", label: "Show or hide the sidebar", icon: "sidebar", keys: "Ctrl+\\", run: () => (ws.sidebarOpen = !ws.sidebarOpen) },
+	{ id: "focus", label: "Focus mode", icon: "focus", keys: "Ctrl+Shift+Enter", run: () => (writing.focus = !writing.focus) },
+	{ id: "typewriter", label: "Typewriter scrolling", icon: "type", run: () => (writing.typewriter = !writing.typewriter) },
+	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
 	{ id: "close-tab", label: "Close tab", icon: "x", keys: "Ctrl+W", run: () => ws.active && ws.closeTab(ws.active) },
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.active && ws.setHome(ws.active) },
 	{ id: "palette", label: "Command palette", icon: "command", keys: "Ctrl+P", run: () => (ws.modal = ws.modal === "palette" ? null : "palette") },

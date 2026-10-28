@@ -17,8 +17,10 @@
 	import { motionMs } from "./lib/theme/theme";
 	import { noteTitle, pickCave } from "./lib/cave";
 	import { startWorkspace, ws } from "./lib/workspace.svelte";
+	import { trackWriting, writing } from "./lib/writing.svelte";
 
 	trackTheme();
+	trackWriting();
 	startWorkspace();
 	const ms = $derived(motionMs(theme));
 	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
@@ -44,6 +46,8 @@
 		const key = keyName(e);
 		if (key === "Escape" && ws.modal) {
 			ws.modal = null;
+		} else if (key === "Escape" && writing.focus) {
+			writing.focus = false;
 		} else if (key === "Ctrl+Tab" || key === "Ctrl+Shift+Tab") {
 			ws.nextTab(e.shiftKey ? -1 : 1);
 		} else {
@@ -57,7 +61,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:sidebar-closed={!ws.sidebarOpen}>
+<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus}>
 	<Ribbon />
 	<aside class="sidebar">
 		<Sidebar {ms} />
@@ -99,6 +103,9 @@
 			{/if}
 		</div>
 
+		{#if writing.focus}
+			<button class="focus-exit" onclick={() => (writing.focus = false)} title="Leave focus mode (Esc)">{@html icon("focus", 15)}</button>
+		{/if}
 		<footer class="status">
 			<span>{words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
@@ -128,6 +135,58 @@
 	}
 	.app.sidebar-closed {
 		grid-template-columns: 48px 0px 1fr;
+	}
+	/* Focus mode: everything but the text slides away. */
+	.app.is-focus {
+		grid-template-columns: 0px 0px 1fr;
+	}
+	.app > :global(.ribbon),
+	.tabbar,
+	.status {
+		transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease), margin var(--dur) var(--ease);
+	}
+	.is-focus > :global(.ribbon) {
+		opacity: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+	.is-focus .sidebar {
+		border-right-color: transparent;
+	}
+	.is-focus .sidebar :global(.sidebar-inner) {
+		opacity: 0;
+		transform: translateX(-16px);
+	}
+	.is-focus .tabbar {
+		margin-top: -41px;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.is-focus .status {
+		opacity: 0;
+		transform: translateY(100%);
+	}
+	.main {
+		position: relative;
+	}
+	.focus-exit {
+		position: absolute;
+		top: 12px;
+		right: 14px;
+		z-index: 6;
+		display: inline-flex;
+		padding: 7px;
+		border: 0;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--muted);
+		opacity: 0.35;
+		cursor: pointer;
+		transition: opacity var(--dur) var(--ease), background-color var(--dur) var(--ease);
+	}
+	.focus-exit:hover {
+		opacity: 1;
+		background: var(--hover);
 	}
 	.sidebar {
 		min-height: 0;

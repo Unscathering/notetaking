@@ -103,6 +103,32 @@ class Workspace {
 		return this.newNote(folder, name, newBoardText());
 	}
 
+	/** Saves an image into the cave's attachments folder and returns its path. */
+	async saveImage(bytes: Uint8Array, ext: string) {
+		if (!this.cave) return null;
+		const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+		let path = `attachments/Image ${stamp}.${ext}`;
+		for (let n = 2; await this.cave.exists(path); n++) path = `attachments/Image ${stamp} ${n}.${ext}`;
+		await this.cave.writeBytes(path, bytes);
+		return path;
+	}
+
+	/** Asks for an image file and copies it into the cave. */
+	pickImage(): Promise<string | null> {
+		return new Promise((resolve) => {
+			const input = document.createElement("input");
+			input.type = "file";
+			input.accept = "image/*";
+			input.onchange = async () => {
+				const f = input.files?.[0];
+				if (!f) return resolve(null);
+				const ext = f.name.split(".").pop()?.toLowerCase() || "png";
+				resolve(await this.saveImage(new Uint8Array(await f.arrayBuffer()), ext));
+			};
+			input.click();
+		});
+	}
+
 	/** Opens a note and scrolls to a line in it. */
 	async openAt(path: string, line: number) {
 		await this.open(path);

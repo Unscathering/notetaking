@@ -8,6 +8,7 @@
 	import { editorExtensions } from "./setup";
 	import { frontmatterRange } from "../notes";
 	import { ws } from "../workspace.svelte";
+	import { writing } from "../writing.svelte";
 
 	interface Props {
 		path: string;
@@ -30,7 +31,14 @@
 		return EditorState.create({
 			doc: initial,
 			selection: { anchor: Math.min(start, initial.length) },
-			extensions: editorExtensions({ onChange: (t) => onchange(p, t), openLink: (target) => onopenlink(target) }),
+			extensions: editorExtensions({
+				onChange: (t) => onchange(p, t),
+				openLink: (target) => onopenlink(target),
+				noteNames: () => ws.notes.map((n) => n.replace(/\.md$/i, "")),
+				pickImage: () => ws.pickImage(),
+				saveImage: (bytes, ext) => ws.saveImage(bytes, ext),
+				imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
+			}),
 		});
 	}
 
@@ -51,6 +59,12 @@
 		view.scrollDOM.scrollTop = next?.scroll ?? 0;
 		shown = p;
 		view.focus();
+	});
+
+	// Spell check follows the writing setting.
+	$effect(() => {
+		const on = writing.spellcheck;
+		if (view) view.contentDOM.spellcheck = on;
 	});
 
 	// Jump to a line, for example from a search result.

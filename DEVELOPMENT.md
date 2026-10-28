@@ -35,20 +35,36 @@ check again before a public launch.
 
 ## Code map
 
-- `src/App.svelte`: the window layout: sidebar, tabs, editor, status bar,
-  keyboard shortcuts, opening and saving notes.
-- `src/lib/vault/`: where notes live. `types.ts` is the interface;
-  `disk.ts` is a real folder (Tauri file system plugin); `memory.ts` is a
-  browser stand-in with `samples.ts`, used for development and previews.
-- `src/lib/editor/`: CodeMirror. `setup.ts` holds the extensions and the
-  editor's look (all from theme variables); `livePreview.ts` shows
-  formatting as you type and hides the Markdown symbols on lines you are not
-  editing (headings, bold, links, `[[wiki links]]`, quotes, code fences,
-  bullets, task checkboxes); `Editor.svelte` keeps one editor state per note.
+- `src/App.svelte`: the window layout (command bar, sidebar, tabs, editor
+  or board, status bar), focus mode and keyboard shortcuts.
+- `src/lib/workspace.svelte.ts`: the app's state and actions (`ws`): the
+  open cave, notes, tabs, saving, moving, renaming, home page, images.
+- `src/lib/commands.ts`: every command in one list; the command bar, the
+  palette (Ctrl+P) and shortcuts all read from it.
+- `src/lib/cave/`: where notes live (a "cave" is a folder of notes).
+  `types.ts` is the interface and the file tree; `disk.ts` is a real folder
+  (Tauri file system plugin); `memory.ts` is a browser stand-in with
+  `samples.ts`, used for development and previews. Per-cave settings (home
+  page, hand-picked order, folder colors and icons) are in
+  `.basalt/cave.json` inside the cave.
+- `src/lib/notes.ts`: note properties (description, tags, banner) and
+  search. `src/lib/board.ts`: boards (Markdown with `basalt: board`).
+- `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
+  spell check, focus mode).
+- `src/lib/editor/`: CodeMirror. `setup.ts` puts it together and holds the
+  editor's look (all from theme variables). `livePreview.ts` hides Markdown
+  symbols on lines you are not editing (headings, bold, links, quotes,
+  callouts, code fences, bullets, checkboxes, #tags). `properties.ts` is the
+  description and tags header. `blocks.ts` draws tables you can edit and
+  images. `suggest.ts` is the `/` menu and `[[` note suggestions.
+  `behaviors.ts` is drag-to-move blocks, pasting images and links,
+  typewriter scrolling and dimming. `Editor.svelte` keeps one state per note.
 - `src/lib/theme/`: `theme.ts` (the theme shape, presets, `applyTheme`),
   `store.svelte.ts` (the live theme, saved in localStorage).
-- `src/lib/ui/`: `FileTree.svelte`, `Settings.svelte` (Appearance panel),
-  `icons.ts`.
+- `src/lib/ui/`: `Ribbon.svelte` (command bar), `Sidebar.svelte`,
+  `FileTree.svelte`, `SearchPanel.svelte`, `TagsPanel.svelte`,
+  `BoardView.svelte` and `CardDialog.svelte`, `Palette.svelte`,
+  `CaveSwitcher.svelte`, `ContextMenu.svelte`, `Settings.svelte`, `icons.ts`.
 - `src-tauri/`: the desktop shell (Rust). `capabilities/default.json` lists
   what the window may do (folder picker; read and write files).
 
@@ -66,22 +82,31 @@ check again before a public launch.
 
 ## Keyboard shortcuts
 
-Ctrl+N new note, Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs,
-Ctrl+\ sidebar, Ctrl+, appearance, Ctrl+F find in note.
+Ctrl+P commands, Ctrl+O open a note, Ctrl+H home, Ctrl+N new note,
+Ctrl+Shift+B new board, Ctrl+Shift+E files, Ctrl+Shift+F search all notes,
+Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
+Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
+Ctrl+, appearance, Ctrl+F find in note.
 
 ## Status
 
-Version 0.1.0: open a folder, file tree, tabs, live-preview editor,
-`[[links]]` that open or create notes, task checkboxes, autosave, five
-themes, the Appearance panel (colors, fonts, sizes, corners, spacing,
-motion), theme files.
+Version 0.1.0 plus, so far:
+
+- A. Caves (vaults) with a switcher, a home page, the command bar and
+  command palette.
+- B. Drag files and folders into any order; folder colors and icons;
+  right-click menu (new, rename, delete, home, looks).
+- C. Search across notes, descriptions and tags on every note, a tags panel.
+- D. Trello-style boards: lists and cards you drag, card colors, due dates,
+  tags, descriptions and checklists.
+- E. Writing: the `/` menu, `[[` suggestions, callouts, tables you edit
+  like a spreadsheet, images (paste, drop or pick), drag blocks to move
+  them, focus mode, typewriter scrolling, dim other paragraphs, spell check.
 
 ## Next steps
 
-1. Command palette (Ctrl+P) and quick switcher (Ctrl+O).
-2. Backlinks panel and link autocomplete when typing `[[`.
-3. Custom title bar (no Windows frame) for a sleeker window.
-4. Click-to-customize mode: click any part of the app to style it.
-5. Rename, delete and move notes from the sidebar (right-click menu).
-6. Split panes, search across all notes, daily notes.
-7. Graph view (Planetarium could come built in), then plugins.
+1. F. Looks: background images with blur, glass panels, banner images on
+   notes, heading styles, many more color palettes.
+2. G. Click-to-customize: click any part of the app to style it.
+3. A local AI helper (Ollama) that can read and suggest edits you approve.
+4. Custom title bar, backlinks, split panes, daily notes, graph view.
