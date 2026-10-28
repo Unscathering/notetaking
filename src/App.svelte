@@ -61,6 +61,21 @@
 
 <svelte:window {onkeydown} />
 
+<!-- The background picture, and the filter that bends light for liquid glass. -->
+<div class="backdrop" aria-hidden="true"></div>
+<svg class="filters" width="0" height="0" aria-hidden="true">
+	<filter id="basalt-liquid" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+		<feTurbulence type="fractalNoise" baseFrequency="0.007 0.011" numOctaves="2" seed="11" result="noise" />
+		<feGaussianBlur in="noise" stdDeviation="2.5" result="soft" />
+		<feDisplacementMap in="SourceGraphic" in2="soft" scale="60" xChannelSelector="R" yChannelSelector="G" />
+	</filter>
+	<filter id="basalt-liquid-mini" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+		<feTurbulence type="fractalNoise" baseFrequency="0.03 0.045" numOctaves="2" seed="11" result="noise" />
+		<feGaussianBlur in="noise" stdDeviation="1" result="soft" />
+		<feDisplacementMap in="SourceGraphic" in2="soft" scale="16" xChannelSelector="R" yChannelSelector="G" />
+	</filter>
+</svg>
+
 <div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus}>
 	<Ribbon />
 	<aside class="sidebar">
@@ -126,12 +141,53 @@
 {/if}
 
 <style>
+	.backdrop {
+		position: fixed;
+		inset: calc(var(--wallpaper-blur) * -2);
+		z-index: 0;
+		background: var(--wallpaper);
+		filter: blur(var(--wallpaper-blur));
+		transition: filter var(--dur) var(--ease);
+	}
+	.backdrop::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		background: var(--wallpaper-fade);
+	}
+	.filters {
+		position: absolute;
+		pointer-events: none;
+	}
 	.app {
+		position: relative;
+		z-index: 1;
 		display: grid;
 		grid-template-columns: 48px var(--sidebar-width) 1fr;
 		grid-template-rows: minmax(0, 1fr);
 		height: 100vh;
-		transition: grid-template-columns var(--dur) var(--ease);
+		padding: var(--float-gap);
+		transition: grid-template-columns var(--dur) var(--ease), padding var(--dur) var(--ease);
+	}
+	/* Floating panels: each part is its own rounded island. */
+	.app > :global(.ribbon),
+	.sidebar,
+	.main {
+		border-radius: var(--float-radius);
+	}
+	.app > :global(.ribbon) {
+		margin-right: var(--float-gap);
+	}
+	.sidebar {
+		margin-right: var(--float-gap);
+		transition: margin var(--dur) var(--ease);
+	}
+	.sidebar-closed .sidebar,
+	.is-focus .sidebar {
+		margin-right: 0;
+	}
+	.is-focus > :global(.ribbon) {
+		margin-right: 0;
 	}
 	.app.sidebar-closed {
 		grid-template-columns: 48px 0px 1fr;
@@ -191,7 +247,10 @@
 	.sidebar {
 		min-height: 0;
 		overflow: hidden;
-		background: var(--part-sidebar-bg, var(--panel));
+		background-color: var(--part-sidebar-bg, var(--surface-panel));
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
+		box-shadow: var(--glass-edge);
 		border-right: 1px solid var(--border);
 	}
 	.sidebar-closed .sidebar {
@@ -206,7 +265,8 @@
 		flex-direction: column;
 		min-width: 0;
 		min-height: 0;
-		background: var(--part-page-bg, var(--bg));
+		overflow: hidden;
+		background: var(--part-page-bg, var(--surface-page));
 	}
 	.tabbar {
 		display: flex;
@@ -237,7 +297,7 @@
 	}
 	.tab.is-active {
 		color: var(--heading);
-		background: var(--part-tab-active, var(--raised));
+		background: var(--part-tab-active, var(--surface-card));
 		box-shadow: inset 0 -2px 0 var(--accent);
 	}
 	.tab-label {

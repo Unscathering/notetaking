@@ -405,7 +405,10 @@
 		max-height: 100%;
 		padding: 8px;
 		border-radius: calc(var(--radius) * 1.4);
-		background: var(--part-list-bg, var(--panel));
+		background-color: var(--part-list-bg, var(--surface-panel));
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
+		box-shadow: var(--glass-edge);
 		border: 1px solid var(--border);
 		transition: opacity var(--dur) var(--ease);
 	}
@@ -473,7 +476,7 @@
 		overflow: hidden;
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		background: var(--part-card-bg, var(--raised));
+		background: var(--part-card-bg, var(--surface-card));
 		color: var(--text);
 		font: inherit;
 		text-align: left;

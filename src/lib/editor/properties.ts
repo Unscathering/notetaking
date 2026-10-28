@@ -5,6 +5,11 @@ import { StateField, type EditorState, type Transaction } from "@codemirror/stat
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { frontmatterRange, readProps, writeProps, type NoteProps } from "../notes";
 
+export interface HeaderHooks {
+	imageUrl(path: string): Promise<string | null>;
+	pickImage(): Promise<string | null>;
+}
+
 /**
  * Changes the note's properties, leaving the rest of the note alone. Runs a
  * moment later, from the note's latest text, because a header input can lose
@@ -24,7 +29,7 @@ function updateProps(view: EditorView, change: (current: NoteProps, ownTags: str
 }
 
 class PropsWidget extends WidgetType {
-	constructor(private props: NoteProps, private bodyTags: string[]) {
+	constructor(private props: NoteProps, private bodyTags: string[], private hooks: HeaderHooks) {
 		super();
 	}
 
@@ -35,6 +40,37 @@ class PropsWidget extends WidgetType {
 	toDOM(view: EditorView) {
 		const root = document.createElement("div");
 		root.className = "cm-props";
+		const pickBanner = async () => {
+			const path = await this.hooks.pickImage();
+			if (path) updateProps(view, (p, own) => ({ ...p, tags: own, banner: path }));
+		};
+
+		if (this.props.banner) {
+			const src = this.props.banner;
+			const banner = document.createElement("div");
+			banner.className = "cm-banner";
+			const img = document.createElement("img");
+			img.alt = "";
+			img.onload = () => banner.classList.add("is-loaded");
+			if (/^(https?:|data:)/.test(src)) img.src = src;
+			else void this.hooks.imageUrl(decodeURI(src)).then((url) => url && (img.src = url));
+			const tools = document.createElement("div");
+			tools.className = "cm-banner-tools";
+			const tool = (label: string, fn: () => void) => {
+				const b = document.createElement("button");
+				b.textContent = label;
+				b.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					fn();
+				});
+				tools.append(b);
+			};
+			tool("Change banner", () => void pickBanner());
+			tool("Remove", () => updateProps(view, (p, own) => ({ ...p, tags: own, banner: undefined })));
+			banner.append(img, tools);
+			root.append(banner);
+			root.classList.add("has-banner");
+		}
 
 		const desc = document.createElement("input");
 		desc.className = "cm-props-desc";
@@ -86,6 +122,17 @@ class PropsWidget extends WidgetType {
 			add.value = "";
 		});
 		tags.append(add);
+		if (!this.props.banner) {
+			const addBanner = document.createElement("button");
+			addBanner.className = "cm-add-banner";
+			addBanner.textContent = "+ Banner";
+			addBanner.title = "Add a banner picture to the top of this note";
+			addBanner.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				void pickBanner();
+			});
+			tags.append(addBanner);
+		}
 		root.append(tags);
 		return root;
 	}
@@ -95,12 +142,12 @@ class PropsWidget extends WidgetType {
 	}
 }
 
-function decorate(state: EditorState): DecorationSet {
+function decorate(state: EditorState, hooks: HeaderHooks): DecorationSet {
 	const text = state.doc.toString();
 	const fm = frontmatterRange(text);
 	const props = readProps(text);
 	const bodyTags = readProps(fm ? text.slice(fm.to) : text).tags;
-	const widget = new PropsWidget(props, bodyTags);
+	const widget = new PropsWidget(props, bodyTags, hooks);
 	if (!fm) return Decoration.set([Decoration.widget({ widget, block: true, side: -1 }).range(0)]);
 	// Show the raw block while the cursor is inside it.
 	const sel = state.selection.main;
@@ -108,13 +155,14 @@ function decorate(state: EditorState): DecorationSet {
 	return Decoration.set([Decoration.replace({ widget, block: true }).range(0, fm.to - 1)]);
 }
 
-export const noteHeader = StateField.define<DecorationSet>({
-	create: decorate,
-	update(value: DecorationSet, tr: Transaction) {
-		return tr.docChanged || tr.selection ? decorate(tr.state) : value;
-	},
-	provide: (f) => EditorView.decorations.from(f),
-});
+export const noteHeader = (hooks: HeaderHooks) =>
+	StateField.define<DecorationSet>({
+		create: (state) => decorate(state, hooks),
+		update(value: DecorationSet, tr: Transaction) {
+			return tr.docChanged || tr.selection ? decorate(tr.state, hooks) : value;
+		},
+		provide: (f) => EditorView.decorations.from(f),
+	});
 
 /** Where the note's own text starts, after its properties block. */
 export const bodyStart = (state: EditorState) => frontmatterRange(state.doc.toString())?.to ?? 0;

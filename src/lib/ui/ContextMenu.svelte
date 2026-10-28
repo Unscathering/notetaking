@@ -88,10 +88,12 @@
 		min-width: 210px;
 		max-width: 260px;
 		padding: 5px;
-		background: var(--raised);
+		background-color: var(--surface-float);
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+		box-shadow: var(--glass-edge), 0 16px 40px rgba(0, 0, 0, 0.35);
 		transform-origin: top left;
 	}
 	.item {

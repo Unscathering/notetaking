@@ -149,10 +149,12 @@
 		max-height: 86vh;
 		translate: -50% 0;
 		overflow-y: auto;
-		background: var(--panel);
+		background-color: var(--surface-float);
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
 		border: 1px solid var(--border);
 		border-radius: calc(var(--radius) * 1.5);
-		box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+		box-shadow: var(--glass-edge), 0 30px 80px rgba(0, 0, 0, 0.45);
 	}
 	.cover {
 		height: 54px;

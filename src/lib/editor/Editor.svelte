@@ -45,8 +45,14 @@
 	onMount(() => {
 		view = new EditorView({ parent: host, state: stateFor(path, text) });
 		shown = path;
+		// Banners stretch across the whole pane, wider than the text column.
+		const measure = new ResizeObserver(() => view && view.dom.style.setProperty("--pane-width", `${view.scrollDOM.clientWidth}px`));
+		measure.observe(view.scrollDOM);
 		view.focus();
-		return () => view?.destroy();
+		return () => {
+			measure.disconnect();
+			view?.destroy();
+		};
 	});
 
 	// Switching notes: keep the old note's state, bring in the new one.

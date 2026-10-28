@@ -31,7 +31,10 @@
 		gap: 4px;
 		width: 48px;
 		padding: 10px 0;
-		background: var(--part-ribbon-bg, var(--panel));
+		background-color: var(--part-ribbon-bg, var(--surface-panel));
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
+		box-shadow: var(--glass-edge);
 		border-right: 1px solid var(--border);
 	}
 	.gap {

@@ -8,7 +8,10 @@ function load(): Theme {
 	try {
 		const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Theme | null;
 		// Fill in anything a newer version added since the theme was saved.
-		if (saved) return { ...cloneTheme(DEFAULT_THEME), ...saved, colors: { ...DEFAULT_THEME.colors, ...saved.colors }, type: { ...DEFAULT_THEME.type, ...saved.type }, shape: { ...DEFAULT_THEME.shape, ...saved.shape }, motion: { ...DEFAULT_THEME.motion, ...saved.motion } };
+		if (saved) {
+			const d = cloneTheme(DEFAULT_THEME);
+			return { ...d, ...saved, colors: { ...d.colors, ...saved.colors }, type: { ...d.type, ...saved.type }, headings: { ...d.headings, ...saved.headings }, shape: { ...d.shape, ...saved.shape }, background: { ...d.background, ...saved.background }, glass: { ...d.glass, ...saved.glass }, motion: { ...d.motion, ...saved.motion } };
+		}
 	} catch {
 		// A broken saved theme falls back to the default.
 	}
@@ -30,5 +33,6 @@ export function trackTheme() {
 }
 
 export function useTheme(next: Theme) {
-	Object.assign(theme, cloneTheme(next));
+	const { group: _group, ...rest } = cloneTheme(next) as Theme & { group?: string };
+	Object.assign(theme, rest);
 }

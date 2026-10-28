@@ -16,8 +16,10 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours. 
 - Descriptions and tags on every note, a tags panel, and search across all notes
 - Boards like Trello: lists, cards, colors, due dates, descriptions and checklists
 - Focus mode, typewriter scrolling and dimming of other paragraphs
-- An Appearance panel (Ctrl+,) for colors, fonts, sizes, spacing, corners and animation, all live
-- Five built-in themes, and themes you can save and share as one file
+- 24 themes, shown as little pictures of the app, and themes you can save and share as one file
+- Glass, frosted glass and liquid glass panels, floating panels, and background pictures with blur
+- Banner pictures on notes, heading styles, nine fonts, and animation styles you can watch before choosing
+- An Appearance window (Ctrl+,) where every change shows up live
 
 ## Download
 

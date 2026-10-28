@@ -46,3 +46,36 @@ select:focus-visible {
 		animation-duration: 0ms !important;
 	}
 }
+
+/* Heading styles, chosen in Appearance > Text. */
+:root[data-headings="underline"] .cm-editor .cm-h1,
+:root[data-headings="underline"] .cm-editor .cm-h2 {
+	padding-bottom: 0.18em;
+	border-bottom: 1px solid var(--border);
+}
+:root[data-headings="bar"] .cm-editor .cm-h1,
+:root[data-headings="bar"] .cm-editor .cm-h2,
+:root[data-headings="bar"] .cm-editor .cm-h3 {
+	padding-left: 16px !important;
+	background: linear-gradient(var(--accent), var(--accent)) left bottom 0.12em / 4px 1.05em no-repeat;
+}
+:root[data-headings="accent"] .cm-editor .cm-h,
+:root[data-headings="accent"] .cm-editor .cm-h * {
+	color: var(--accent);
+}
+:root[data-headings="gradient"] .cm-editor .cm-h {
+	background: linear-gradient(90deg, var(--accent), var(--link) 4ch, var(--heading) 10ch);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+:root[data-headings="gradient"] .cm-editor .cm-h * {
+	color: transparent;
+}
+:root[data-headings="caps"] .cm-editor .cm-h {
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+:root[data-headings="caps"] .cm-editor .cm-h1 {
+	font-size: calc(1em * var(--heading-scale) * var(--heading-scale));
+}

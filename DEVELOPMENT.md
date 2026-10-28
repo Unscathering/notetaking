@@ -59,12 +59,20 @@ check again before a public launch.
   images. `suggest.ts` is the `/` menu and `[[` note suggestions.
   `behaviors.ts` is drag-to-move blocks, pasting images and links,
   typewriter scrolling and dimming. `Editor.svelte` keeps one state per note.
-- `src/lib/theme/`: `theme.ts` (the theme shape, presets, `applyTheme`),
-  `store.svelte.ts` (the live theme, saved in localStorage).
+- `src/lib/theme/`: `theme.ts` (the theme shape, 24 presets, wallpapers,
+  `themeVars` which turns a theme into CSS variables, including the glass
+  surfaces), `store.svelte.ts` (the live theme, saved in localStorage).
+  Glass works through `--surface-*`, `--glass-filter`, `--glass-edge` and
+  `--glass-grain`; liquid glass uses the SVG filter `#basalt-liquid` in
+  `App.svelte`. Heading styles are CSS in `app.css` keyed on
+  `html[data-headings]`.
 - `src/lib/ui/`: `Ribbon.svelte` (command bar), `Sidebar.svelte`,
   `FileTree.svelte`, `SearchPanel.svelte`, `TagsPanel.svelte`,
   `BoardView.svelte` and `CardDialog.svelte`, `Palette.svelte`,
-  `CaveSwitcher.svelte`, `ContextMenu.svelte`, `Settings.svelte`, `icons.ts`.
+  `CaveSwitcher.svelte`, `ContextMenu.svelte`, `icons.ts`. `Settings.svelte`
+  is the Appearance window; its pages, the little theme pictures
+  (`MiniApp.svelte`), sliders, switches and the looping motion examples
+  (`demo.ts`) are in `ui/settings/`.
 - `src-tauri/`: the desktop shell (Rust). `capabilities/default.json` lists
   what the window may do (folder picker; read and write files).
 
@@ -102,11 +110,14 @@ Version 0.1.0 plus, so far:
 - E. Writing: the `/` menu, `[[` suggestions, callouts, tables you edit
   like a spreadsheet, images (paste, drop or pick), drag blocks to move
   them, focus mode, typewriter scrolling, dim other paragraphs, spell check.
+- F. Looks: a new Appearance window made of picture cards, 24 themes,
+  background pictures (12 built in, or your own) with blur and fade, solid,
+  glass, frosted and liquid glass, floating panels, banner images on notes,
+  six heading styles with their own font and weight, nine fonts, and motion
+  styles you can watch before choosing.
 
 ## Next steps
 
-1. F. Looks: background images with blur, glass panels, banner images on
-   notes, heading styles, many more color palettes.
-2. G. Click-to-customize: click any part of the app to style it.
-3. A local AI helper (Ollama) that can read and suggest edits you approve.
-4. Custom title bar, backlinks, split panes, daily notes, graph view.
+1. G. Click-to-customize: click any part of the app to style it.
+2. A local AI helper (Ollama) that can read and suggest edits you approve.
+3. Custom title bar, backlinks, split panes, daily notes, graph view.

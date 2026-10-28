@@ -122,10 +122,12 @@
 		width: min(620px, calc(100vw - 32px));
 		translate: -50% 0;
 		overflow: hidden;
-		background: var(--panel);
+		background-color: var(--surface-float);
+		background-image: var(--glass-grain);
+		backdrop-filter: var(--glass-filter);
 		border: 1px solid var(--border);
 		border-radius: calc(var(--radius) * 1.5);
-		box-shadow: 0 28px 70px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--glass-edge), 0 28px 70px rgba(0, 0, 0, 0.4);
 	}
 	.field {
 		display: flex;
