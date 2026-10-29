@@ -4,10 +4,13 @@
 import { StateField, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { frontmatterRange, readProps, writeProps, type NoteProps } from "../notes";
+import { titleBox, type TitleHooks } from "./inlineTitle";
 
 export interface HeaderHooks {
 	imageUrl(path: string): Promise<string | null>;
 	pickImage(): Promise<string | null>;
+	/** The note's name shown big under the banner (left out when inline titles are off). */
+	title?: TitleHooks;
 }
 
 /**
@@ -34,14 +37,14 @@ class PropsWidget extends WidgetType {
 	}
 
 	eq(other: PropsWidget) {
-		return JSON.stringify(other.props) === JSON.stringify(this.props) && other.bodyTags.join() === this.bodyTags.join() && other.reading === this.reading;
+		return JSON.stringify(other.props) === JSON.stringify(this.props) && other.bodyTags.join() === this.bodyTags.join() && other.reading === this.reading && other.hooks.title?.name === this.hooks.title?.name;
 	}
 
 	toDOM(view: EditorView) {
 		const root = document.createElement("div");
 		root.className = "cm-props";
 		// Nothing to show in view mode: no banner, description or tags.
-		if (!this.props.banner && !this.props.description && !this.props.tags.length) root.classList.add("is-empty");
+		if (!this.props.description && !this.props.tags.length) root.classList.add(this.props.banner || this.hooks.title ? "no-props" : "is-empty");
 		const pickBanner = async () => {
 			const path = await this.hooks.pickImage();
 			if (path) updateProps(view, (p, own) => ({ ...p, tags: own, banner: path }));
@@ -73,6 +76,7 @@ class PropsWidget extends WidgetType {
 			root.append(banner);
 			root.classList.add("has-banner");
 		}
+		if (this.hooks.title) root.append(titleBox(view, this.hooks.title));
 
 		const desc = document.createElement("input");
 		desc.className = "cm-props-desc";

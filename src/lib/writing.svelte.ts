@@ -9,12 +9,14 @@ interface Writing {
 	spellcheck: boolean;
 	/** The AI checks grammar in each paragraph after you leave it. */
 	aiCheck: boolean;
+	/** The note's name, big, above its text (editing it renames the note). */
+	inlineTitle: boolean;
 	/** Hide everything but the text (not remembered between visits). */
 	focus: boolean;
 }
 
 function load(): Writing {
-	const base: Writing = { typewriter: false, dimOthers: false, spellcheck: true, aiCheck: false, focus: false };
+	const base: Writing = { typewriter: false, dimOthers: false, spellcheck: true, aiCheck: false, inlineTitle: true, focus: false };
 	try {
 		return { ...base, ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Writing>), focus: false };
 	} catch {

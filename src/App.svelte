@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { flip } from "svelte/animate";
-	import { fly } from "svelte/transition";
-	import { cubicOut } from "svelte/easing";
 	import Editor from "./lib/editor/Editor.svelte";
 	import Sidebar from "./lib/ui/Sidebar.svelte";
 	import Ribbon from "./lib/ui/Ribbon.svelte";
@@ -44,7 +42,8 @@
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
 	import { noteTitle, pickCave } from "./lib/cave";
-	import { isView, startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
+	import { isNewTab, isView, startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
+	import NewTab from "./lib/ui/NewTab.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
 	import { mediaUrl } from "./lib/theme/media.svelte";
 
@@ -114,7 +113,6 @@
 		document.addEventListener("visibilitychange", sync);
 		return () => document.removeEventListener("visibilitychange", sync);
 	});
-	let shown: string | null = null;
 
 	// Backups of each cave, from the moment it opens, and each note's history.
 	$effect(() => {
@@ -126,13 +124,6 @@
 	// Snippets edited in another program show up when you come back to Basalt.
 	const refocus = () => void loadSnippets();
 	startHistory();
-
-	// A soft fade and lift whenever another note comes to the front.
-	$effect(() => {
-		const a = ws.active;
-		if (a && shown && a !== shown) editorHost?.animate([{ opacity: 0.35, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: ms, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
-		shown = a;
-	});
 
 	async function chooseCave() {
 		const cave = await pickCave();
@@ -190,13 +181,14 @@
 		<div class="tabbar">
 			<div class="tabs" role="tablist">
 				{#each ws.tabs as path (path)}
-					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={ws.active === path}>
+					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} role="tab" aria-selected={ws.active === path}>
 						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
 							{#if viewInfo(path)}<span class="tab-ico">{@html icon(viewInfo(path)!.icon, 13)}</span>{viewInfo(path)!.label}{:else}{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}{/if}
 						</button>
 						<button class="tab-close" onclick={() => ws.closeTab(path)} title="Close (Ctrl+W)">{@html icon("x", 14)}</button>
 					</div>
 				{/each}
+				<button class="tab-new" onclick={() => ws.newTab()} title="New tab (Ctrl+T)">{@html icon("plus", 15)}</button>
 			</div>
 		</div>
 
@@ -208,6 +200,8 @@
 					<p>Your notes live in caves: plain Markdown files in a folder you choose.</p>
 					<button class="primary" onclick={chooseCave}>Choose a folder for your first cave</button>
 				</div>
+			{:else if isNewTab(ws.active)}
+				<NewTab />
 			{:else if ws.active === "basalt:graph"}
 				<GraphView {ms} />
 			{:else if ws.active === "basalt:calendar"}
@@ -509,6 +503,23 @@
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		cursor: pointer;
+	}
+	.tab-new {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 28px;
+		height: 28px;
+		margin: auto 4px;
+		border: 0;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.tab-new:hover {
+		color: var(--text);
+		background: var(--hover);
 	}
 	.tab-ico {
 		display: inline-flex;

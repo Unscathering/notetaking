@@ -7,7 +7,8 @@
 	import { EditorSelection } from "@codemirror/state";
 	import { editorExtensions, viewMode, viewing } from "./setup";
 	import { frontmatterRange } from "../notes";
-	import { ws } from "../workspace.svelte";
+	import { isView, ws } from "../workspace.svelte";
+	import { noteTitle } from "../cave";
 	import { writing } from "../writing.svelte";
 	import { helpHooks } from "../ai/writer";
 	import { activeEditor } from "./active";
@@ -46,8 +47,26 @@
 				...helpHooks,
 				live: liveHooksFor(p),
 				onCursor: (line) => (ws.cursorLine = line),
+				title: writing.inlineTitle && !isView(p) ? { name: noteTitle(p), rename: (name) => void renameFromTitle(p, name), fresh: () => ws.takeFresh(p) } : undefined,
 			}, ws.isViewing(p)),
 		});
+	}
+
+	/**
+	 * Renames a note from its inline title. A first heading that matched the old
+	 * name (as notes used to start) changes with it, so the two never disagree.
+	 */
+	async function renameFromTitle(p: string, name: string) {
+		const text = ws.texts.get(p) ?? "";
+		const start = frontmatterRange(text)?.to ?? 0;
+		const body = text.slice(start);
+		const lead = body.length - body.trimStart().length;
+		const line = body.slice(lead).split("\n", 1)[0];
+		if (line.trimEnd() === `# ${noteTitle(p)}`) {
+			const at = start + lead;
+			await ws.writeNote(p, text.slice(0, at) + `# ${name}` + text.slice(at + line.length));
+		}
+		await ws.rename(p, name);
 	}
 
 	onMount(() => {
@@ -162,6 +181,16 @@
 		if (!mounted || !view || shown !== path) return;
 		if (view.state.readOnly !== on) view.dispatch({ effects: viewMode.reconfigure(viewing(on)) });
 		host.classList.toggle("is-reading", on);
+	});
+
+	// Turning the inline title on or off: every note's editor is made again.
+	let titles = writing.inlineTitle;
+	$effect(() => {
+		const on = writing.inlineTitle;
+		if (on === titles || !view) return;
+		titles = on;
+		states.clear();
+		view.setState(stateFor(shown, view.state.doc.toString()));
 	});
 
 	// Spell check follows the writing setting.

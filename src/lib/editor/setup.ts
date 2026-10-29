@@ -10,6 +10,7 @@ import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@cod
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
 import { noteHeader } from "./properties";
+import type { TitleHooks } from "./inlineTitle";
 import { suggestions, type SuggestHooks } from "./suggest";
 import { richBlocks, type BlockHooks } from "./blocks";
 import { blockHandles, dimOthers, pasteAndDrop, typewriter, type BehaviorHooks } from "./behaviors";
@@ -83,6 +84,9 @@ const look = EditorView.theme({
 	".cm-add-banner": { marginLeft: "auto", background: "transparent", backdropFilter: "none", color: "var(--muted)", borderStyle: "dashed", opacity: "0", transition: "opacity var(--dur) var(--ease)" },
 	".cm-props:hover .cm-add-banner": { opacity: "1" },
 	".cm-add-banner:hover": { color: "var(--text)", borderColor: "var(--accent)" },
+	".basalt-inline-title": { margin: "0 0 10px", outline: "none", color: "var(--heading)", font: "var(--heading-weight, 700) calc(1em * var(--heading-scale) * var(--heading-scale) * var(--heading-scale)) var(--font-heading, var(--font-editor))", letterSpacing: "-0.015em", lineHeight: "1.2", overflowWrap: "anywhere", caretColor: "var(--accent)" },
+	".cm-banner + .basalt-inline-title": { marginTop: "14px" },
+	".cm-props.no-props": { borderBottom: "0", paddingBottom: "6px" },
 	".cm-props": { padding: "0 2px 18px", marginBottom: "6px", borderBottom: "1px solid var(--border)", fontFamily: "var(--font-ui)" },
 	".cm-props-desc": { width: "100%", padding: "2px 0", border: "0", outline: "0", background: "transparent", color: "var(--muted)", font: "italic 1.02em var(--font-editor)" },
 	".cm-props-desc:focus": { color: "var(--text)" },
@@ -144,6 +148,8 @@ export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks, Wr
 	live: LiveHooks;
 	/** The line the cursor moved to (0-based). */
 	onCursor?(line: number): void;
+	/** The note's name shown big above it (left out when inline titles are off). */
+	title?: TitleHooks;
 }
 
 /** View mode: the note can't be edited, and shows tidy with nothing empty to fill in. */

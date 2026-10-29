@@ -16,6 +16,7 @@ import {
 } from "./cave";
 import { readProps, type NoteProps } from "./notes";
 import { isBoardText, newBoardText } from "./board";
+import { writing } from "./writing.svelte";
 
 export type Panel = "files" | "search" | "tags" | "outline";
 /** Tabs that aren't notes: the graph and other whole-cave views. */
@@ -365,9 +366,19 @@ class Workspace {
 		await this.open(path);
 	}
 
+	/** A note that was just made, so its title opens selected, ready to be named. */
+	private fresh: string | null = null;
+	takeFresh(path: string) {
+		const yes = this.fresh === path;
+		if (yes) this.fresh = null;
+		return yes;
+	}
+
 	async newNote(folder = "", name = "Untitled", text?: string) {
 		if (!this.cave) return null;
-		const path = await this.cave.create(folder, name, text ?? `# ${name}\n\n`);
+		// The inline title shows the name, so a new note starts empty (with it off, a heading does).
+		const path = await this.cave.create(folder, name, text ?? (writing.inlineTitle ? "" : `# ${name}\n\n`));
+		if (text == null) this.fresh = path;
 		await this.refresh();
 		await this.open(path);
 		return path;
@@ -457,6 +468,7 @@ class Workspace {
 		for (const h of this.hooks.renamed) h(from, to);
 		const swap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
 		this.tabs = this.tabs.map(swap);
+		this.nav = this.nav.map(swap);
 		if (this.split) this.split = swap(this.split);
 		if (this.active) this.active = swap(this.active);
 		for (const [p, t] of [...this.texts]) {
