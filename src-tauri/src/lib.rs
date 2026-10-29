@@ -41,6 +41,7 @@ pub fn run() {
             ai::ai_devices,
             ai::ai_install_engine,
             ai::ai_download_model,
+            ai::ai_find_model,
             ai::ai_cancel_download,
             ai::ai_delete_model,
             ai::ai_add_model,

@@ -444,6 +444,45 @@ pub async fn ai_download_model(app: AppHandle, engine: State<'_, Engine>, url: S
     download(&app, &engine, &url, &dest, &file).await
 }
 
+/// The model file of a size (like "Q4_K_M") among a repository's files: whole
+/// models only, not the picture readers (mmproj) or pieces of split files.
+fn pick_file<'a>(files: &'a [String], quant: &str) -> Option<&'a String> {
+    let usable = |f: &&String| {
+        let l = f.to_lowercase();
+        l.ends_with(".gguf") && !l.contains("mmproj") && !l.contains("-of-0")
+    };
+    let q = quant.to_lowercase();
+    files
+        .iter()
+        .filter(usable)
+        .find(|f| f.to_lowercase().ends_with(&format!("-{q}.gguf")))
+        .or_else(|| files.iter().filter(usable).find(|f| f.to_lowercase().contains(&q)))
+}
+
+/// Looks up a model's file in a Hugging Face repository by its size name (like
+/// "Q4_K_M"), so a renamed file is still found. Returns its download link.
+#[tauri::command]
+pub async fn ai_find_model(repo: String, quant: String) -> Result<String, String> {
+    if repo.split('/').count() != 2 || repo.contains("..") {
+        return Err("That isn't a model repository.".into());
+    }
+    let res = client()?
+        .get(format!("https://huggingface.co/api/models/{repo}"))
+        .send()
+        .await
+        .map_err(|e| format!("Couldn't reach Hugging Face: {}", reasons(&e)))?;
+    if !res.status().is_success() {
+        return Err(format!("Hugging Face said {} about {repo}.", res.status()));
+    }
+    let info: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    let files: Vec<String> = info["siblings"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|f| f["rfilename"].as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let pick = pick_file(&files, &quant).ok_or_else(|| format!("{repo} has no {quant} model file."))?;
+    Ok(format!("https://huggingface.co/{repo}/resolve/main/{pick}"))
+}
+
 #[tauri::command]
 pub fn ai_cancel_download(engine: State<'_, Engine>) {
     engine.cancel_download.store(true, Ordering::SeqCst);
@@ -609,6 +648,18 @@ pub fn ai_stop_chat(engine: State<'_, Engine>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn picks_the_right_model_file() {
+        let files: Vec<String> = ["README.md", "mmproj-F16.gguf", "Qwen3.5-9B-MTP-UD-Q4_K_XL.gguf", "Qwen3.5-9B-MTP-Q4_K_M.gguf", "Qwen3.5-9B-MTP-Q4_K_S.gguf", "BF16/Qwen3.5-9B-MTP-BF16-00001-of-00002.gguf"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(super::pick_file(&files, "Q4_K_M").map(String::as_str), Some("Qwen3.5-9B-MTP-Q4_K_M.gguf"));
+        assert_eq!(super::pick_file(&files, "Q8_0"), None);
+        let oss: Vec<String> = vec!["gpt-oss-20b-mxfp4.gguf".into()];
+        assert_eq!(super::pick_file(&oss, "mxfp4").map(String::as_str), Some("gpt-oss-20b-mxfp4.gguf"));
+    }
+
     /// Run with a local server that sends pieces: `BASALT_TEST_URL=http://127.0.0.1:8765/big.bin cargo test fetch -- --ignored`.
     #[test]
     #[ignore]

@@ -120,7 +120,9 @@ export const downloadModel = (id: string) =>
 	withProgress(async () => {
 		const m = MODELS.find((x) => x.id === id)!;
 		ai.download = { what: m.file, done: 0, total: m.sizeGb * 1e9 };
-		await invoke("ai_download_model", { url: m.url, file: m.file });
+		// Look the file up in its repository first, in case it was renamed; the link we know is the backup.
+		const url = m.repo && m.quant ? await invoke<string>("ai_find_model", { repo: m.repo, quant: m.quant }).catch(() => m.url) : m.url;
+		await invoke("ai_download_model", { url, file: m.file });
 		ai.model = m.file;
 		remember();
 		await refresh();
