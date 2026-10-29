@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The model test: run Basalt's jobs on a model (or every model on this PC)
 	// and compare the scores. See ai/bench.svelte.ts.
-	import { AREAS, AREA_COUNT, JOB_COUNT, bench, cancelTest, forgetRun, progress, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
+	import { AREAS, AREA_COUNT, JOB_COUNT, LONG_COUNT, bench, cancelTest, forgetRun, progress, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
 	import { ai } from "../../ai/engine.svelte";
 	import { MODELS } from "../../ai/models";
 	import { usingClaude } from "../../ai/claude.svelte";
@@ -10,6 +10,12 @@
 	const label = (file: string) => MODELS.find((m) => m.file === file)?.name ?? file.replace(/\.gguf$/i, "");
 	const minutes = (n: number) => (n < 1.5 ? "about a minute" : `about ${Math.round(n)} minutes`);
 	let open = $state<string | null>(null);
+	/** The long run (about 150 tests a model) instead of the quick one. */
+	let long = $state(false);
+	/** Which models "Test the picked models" runs (all of them until you untick some). */
+	let skipped = $state<string[]>([]);
+	const picked = $derived(ai.models.map((m) => m.file).filter((f) => !skipped.includes(f)));
+	const count = $derived(long ? LONG_COUNT : JOB_COUNT);
 	const best = $derived(bench.runs[0]);
 	const tone = (n: number) => (n >= 80 ? "good" : n >= 55 ? "ok" : "bad");
 	const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -50,14 +56,25 @@
 			</div>
 		</div>
 	{:else}
+		<div class="length" role="radiogroup" aria-label="How long a test">
+			<button role="radio" aria-checked={!long} class:on={!long} onclick={() => (long = false)}>Quick · {JOB_COUNT} tests</button>
+			<button role="radio" aria-checked={long} class:on={long} onclick={() => (long = true)}>Long · {LONG_COUNT} tests</button>
+		</div>
+		{#if ai.models.length > 1}
+			<div class="pickers">
+				{#each ai.models as m (m.file)}
+					<label><input type="checkbox" checked={!skipped.includes(m.file)} onchange={(e) => (skipped = (e.target as HTMLInputElement).checked ? skipped.filter((f) => f !== m.file) : [...skipped, m.file])} /> {label(m.file)}</label>
+				{/each}
+			</div>
+		{/if}
 		<div class="buttons">
-			<button class="ghost" disabled={usingClaude() || !ai.model} onclick={() => runTest()}>{@html icon("zap", 13)} Test {label(ai.model)}</button>
+			<button class="ghost" disabled={usingClaude() || !ai.model} onclick={() => runTest([ai.model], long)}>{@html icon("zap", 13)} Test {label(ai.model)}</button>
 			{#if ai.models.length > 1}
-				<button class="ghost" disabled={usingClaude()} onclick={() => runTest(ai.models.map((m) => m.file))}>{@html icon("layers", 13)} Test all {ai.models.length} models on this PC</button>
+				<button class="ghost" disabled={usingClaude() || !picked.length} onclick={() => runTest(picked, long)}>{@html icon("layers", 13)} Test the {picked.length} ticked {picked.length === 1 ? "model" : "models"}</button>
 			{/if}
 		</div>
 		{#if usingClaude()}<p class="hint">Turn off Claude above to test the models on this PC.</p>{/if}
-		<p class="hint small">Takes {minutes(JOB_COUNT * 0.05)} for a small model, longer for big ones. Only downloaded models are tested.</p>
+		<p class="hint small">{count} tests take {minutes(count * 0.05)} for a small model, longer for big ones{long ? " (an hour or more for Smart)" : ""}. Only downloaded models are tested.{long ? " The long test asks every test several times, worded differently, so the score is steadier." : ""}</p>
 	{/if}
 	{#if bench.error}<p class="problem">{bench.error}</p>{/if}
 
@@ -125,6 +142,40 @@
 	.problem {
 		color: #e05d5d;
 		font-size: 12px;
+	}
+	.length {
+		display: inline-flex;
+		margin-bottom: 8px;
+		padding: 2px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+	}
+	.length button {
+		padding: 3px 10px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font-size: 11.5px;
+	}
+	.length button.on {
+		background: var(--accent-soft);
+		color: var(--accent);
+		font-weight: 600;
+	}
+	.pickers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 12px;
+		margin-bottom: 8px;
+		font-size: 12px;
+		color: var(--text);
+	}
+	.pickers label {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
 	}
 	.buttons {
 		display: flex;

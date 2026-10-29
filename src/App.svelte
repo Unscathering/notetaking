@@ -491,9 +491,12 @@
 		background: var(--part-page-bg, var(--surface-page));
 	}
 	/* Room for the window buttons in the top-right corner. */
-	.frameless:not(.ai-open) .tabbar,
-	.frameless.ai-open :global(.ai > header) {
+	.frameless:not(.ai-open) .tabbar {
 		padding-right: 148px;
+	}
+	/* With the AI panel open the buttons sit above its header, in a strip that drags the window. */
+	.frameless.ai-open :global(.ai > header) {
+		padding-top: 44px;
 	}
 	.tabbar {
 		display: flex;

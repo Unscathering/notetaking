@@ -1197,6 +1197,7 @@
 	}
 	.pill.model {
 		flex: 0 1 auto;
+		min-width: 72px;
 	}
 	.pill.project {
 		position: relative;

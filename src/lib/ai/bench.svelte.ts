@@ -675,11 +675,63 @@ const PAIRS: Array<[string, string]> = [
 /** How many tests one run asks. */
 export const JOB_COUNT = PAIRS.length;
 
-function pickJobs(): Job[] {
+function pickJobs(long = false): Job[] {
+	if (long) return longJobs();
 	return PAIRS.map((pair) => {
 		const id = pair[Math.random() < 0.5 ? 0 : 1];
 		return JOBS.find((j) => j.id === id)!;
 	});
+}
+
+/** How many tests the long run asks: every test, several times, worded a little differently each time. */
+export const LONG_COUNT = PAIRS.length * 2 * 4 + PAIRS.length;
+
+/**
+ * The same request, the way different people type it: lowercase, no full stop,
+ * a "pls" in front, a "thanks" after... The words that matter stay the same,
+ * so the scoring still holds.
+ */
+function reword(ask: string, n: number): string {
+	const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+	const bare = (t: string) => t.replace(/[.!?]+$/, "");
+	switch (n % 5) {
+		case 0:
+			return ask;
+		case 1:
+			return lower(bare(ask));
+		case 2:
+			return `pls ${lower(ask)}`;
+		case 3:
+			return `${bare(ask)}, thanks!`;
+		default:
+			return `hey, ${lower(bare(ask))}?`.replace(/\?\?$/, "?");
+	}
+}
+
+/**
+ * The long run: both of every pair, four times over with different wording,
+ * then one of each pair once more (about 150 tests). Shuffled, so a slow
+ * stretch or a warm cache doesn't favor one area.
+ */
+function longJobs(): Job[] {
+	const out: Job[] = [];
+	let n = 0;
+	for (let round = 0; round < 4; round++)
+		for (const pair of PAIRS)
+			for (const id of pair) {
+				const job = JOBS.find((j) => j.id === id)!;
+				out.push({ ...job, id: `${job.id}~${n++}`, ask: job.grammar ? job.ask : reword(job.ask, round + (id === pair[1] ? 1 : 0)) });
+			}
+	for (const pair of PAIRS) {
+		const id = pair[Math.random() < 0.5 ? 0 : 1];
+		const job = JOBS.find((j) => j.id === id)!;
+		out.push({ ...job, id: `${job.id}~${n++}`, ask: job.grammar ? job.ask : reword(job.ask, 4) });
+	}
+	for (let i = out.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[out[i], out[j]] = [out[j], out[i]];
+	}
+	return out;
 }
 
 // ---- Running ----
@@ -964,7 +1016,8 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 	}
 	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];
 	// Shown in the usual order, whatever order they ran in.
-	results.sort((x, y) => JOBS.findIndex((j) => j.id === x.id) - JOBS.findIndex((j) => j.id === y.id));
+	const base = (id: string) => JOBS.findIndex((j) => j.id === id.split("~")[0]);
+	results.sort((x, y) => base(x.id) - base(y.id));
 	const byArea: Partial<Record<Area, number>> = {};
 	for (const a of Object.keys(AREAS) as Area[]) {
 		const r = results.filter((x) => x.area === a);
@@ -985,10 +1038,10 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 }
 
 /** Tests the model in use, or each of `models` in turn (then goes back to the one in use). */
-export async function runTest(models: string[] = [ai.model]) {
+export async function runTest(models: string[] = [ai.model], long = false) {
 	if (bench.running) return;
 	const before = ai.model;
-	const picks = pickJobs();
+	const picks = pickJobs(long);
 	Object.assign(bench, { running: true, cancelled: false, error: "", models: models.length, modelIndex: 0, started: Date.now(), modelSeconds: [], done: [], current: "" });
 	try {
 		for (const [i, model] of models.entries()) {
