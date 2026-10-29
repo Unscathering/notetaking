@@ -59,6 +59,12 @@ only those notes.
 | `.sidebar`, `.ribbon`, `.tabbar`, `.status` | The parts of the window |
 | `html[data-material="glass"]`, `html[data-light="yes"]` | The current material, light or dark theme |
 | `.is-reading` | Around a note in view mode (Ctrl+E): style reading differently from editing |
+| `.basalt-inline-title` | The note's name, big at the top (rename the note by editing it) |
+| `.cm-center` | A line written `-> like this <-` (shown centered) |
+| `.note-center-headings` | Give a note `cssclass: center-headings` to center its headings |
+| `.view-header`, `.window-controls` | The bar above a note, and the minimize/maximize/close buttons |
+| `.basalt-tools`, `.basalt-row-tools`, `.basalt-group`, `.basalt-pick` | A block's buttons while editing, a row's pin/hide buttons, group headings, the "+ Add a note" box |
+| `.cm-peek` | The preview of a linked note (Ctrl+hover a link) |
 
 ## Live blocks
 
@@ -77,7 +83,7 @@ sort: name
 
 | Key | Values |
 | --- | --- |
-| `list` | `notes` (the default), `tasks`, `tags`, `backlinks`, `habits`, or a widget (below) |
+| `list` | `notes` (the default), `picked` (only the notes in `note:` lines), `tasks`, `tags`, `backlinks`, `habits`, or a widget (below) |
 | `show` | `list` (the default), `cards`, `table`, `count` |
 | `from` | Folders, separated by commas |
 | `tag` | Only notes with this tag |
@@ -91,6 +97,26 @@ sort: name
 | `columns` | Table columns: properties, or `folder`, `due`, `tags`, `note` |
 | `days` | Habits: how many days back (28 if left out) |
 | `title` | A heading above it |
+| `note` | A note picked by hand, one per line, in order. With no other filter the list is just these |
+| `pin` | Shown first, in the order pinned (one per line) |
+| `hide` | Left out (one per line) |
+| `group` | `folder` or `tag`: the list split under small headings |
+
+### Organizing a dashboard by hand
+
+You don't have to write those lines yourself. While editing (Ctrl+E), point
+at a block:
+
+- Each note or task has a pin and a hide button; drag them into the order you
+  want (that pins them in that order). "+ Add a note…" under a list picks one
+  in. "2 hidden · show" brings hidden ones back.
+- The block's own buttons move it up or down, **+** adds another piece after
+  it (a list of notes you pick, a folder's notes, tasks, tiles, a goal, the
+  calendar, the focus timer, quick capture, habits…), `</>` opens it as text
+  and the bin removes it (Ctrl+Z brings it back).
+- In a block laid out in columns, each card has its own buttons: move it
+  left, right, up or down, add a card under it, or remove it.
+- Titles, taglines and goals change when you click them and type.
 
 ### Dashboard widgets
 

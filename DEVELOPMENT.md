@@ -39,6 +39,19 @@ check again before a public launch.
   or board, status bar), focus mode and keyboard shortcuts.
 - `src/lib/workspace.svelte.ts`: the app's state and actions (`ws`): the
   open cave, notes, tabs, saving, moving, renaming, home page, images.
+- `src/lib/ui/NewTab.svelte`, `ViewHeader.svelte`, `WindowControls.svelte`:
+  the empty tab page (the + on the tab bar), the bar above a note (back,
+  forward, path, view toggle, ⋮ menu) and the window's own minimize,
+  maximize and close buttons (the window has no title bar; `decorations` is
+  off in `tauri.conf.json`, and `data-tauri-drag-region` bars drag it). A
+  note opens in the current tab; views and boards get their own, and
+  Ctrl-click or the middle button opens a new one.
+- `src/lib/editor/inlineTitle.ts`: the note's name shown big at the top
+  (inside the note header, `properties.ts`); editing it renames the note, and
+  so does editing a first `# heading` that said the note's name.
+- `src/lib/editor/blockEdit.ts`: changes to a ```basalt block's lines when a
+  dashboard is organized by hand (pin, hide, pick, order, move and add
+  cards), and the pieces the + menu adds.
 - `src/lib/commands.ts`: every command in one list; the command bar, the
   palette (Ctrl+P) and shortcuts all read from it.
 - `src/lib/cave/`: where notes live (a "cave" is a folder of notes).
@@ -242,7 +255,9 @@ Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
 Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
 Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
 grammar (selection or whole note), Ctrl+Shift+D today's note, Ctrl+Shift+N
-new note from a template, Ctrl+click a note to open it on the right, Ctrl+Shift+P print or save as
+new note from a template, Ctrl+T new tab, Ctrl+Alt+← / → back and forward, Ctrl+click a note or link
+to open it in a new tab (Ctrl+Alt+click a note: on the right), Ctrl+hover a
+link to preview it, Ctrl+Shift+P print or save as
 PDF, Ctrl+Shift+K clip a web page.
 
 ## Status
@@ -279,6 +294,12 @@ Version 0.1.0 plus, so far:
   modding (CSS snippets, cssclass, live blocks, embeds, MODDING.md), outline,
   database view, split panes, export and share, habits and a focus timer,
   web clipper, the gallery, basalt:// links and voice typing.
+- 0.13 to 0.18: the model test, tool routing, speculative decoding, view
+  mode, dashboard widgets, columns and the Komorebi look.
+- 0.19: Obsidian-style tabs, inline titles, a frameless window, the note bar,
+  organizing dashboards by hand, a Claudian-style AI panel (chat tabs, note
+  chips and @mentions), backgrounds from a link, centered headings and lines,
+  link previews.
 
 ## Next steps
 
