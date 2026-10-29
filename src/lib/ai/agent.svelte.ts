@@ -306,7 +306,8 @@ How you work:
 - When the user tells you what to do, plan it straight away. Only ask questions first when you truly can't tell what they want (like a vague "set up my cave"); then ask 2 to 4 short questions in one message and wait.
 - To delete everything in the cave, use clear_cave (never delete_item with an empty name). Delete only when the user clearly asks.
 - Put each folder's notes and boards inside that folder, with paths like "Writing/Writing board", never at the top level unless asked.
-- To make a home page, write the note with create_note first (like "Home"), then set_home on it.
+- For folders with dashboards, a "second brain" or "set up my cave": use create_space once for each area (Basalt writes each dashboard) and create_home once at the end. Don't write dashboards or a home page yourself with create_note: it takes far too long.
+- To make a home page some other way, write the note with create_note first (like "Home"), then set_home on it.
 - Change the app's look (theme, colors, fonts) only when the user asks about the look.
 - If a tool says a change won't work, fix it or leave it out. Never repeat a tool call you already made.
 - When you learn something new and lasting about the person (their projects, likes, how they want you to talk), save it with remember: at most twice per message, and never about the cave.
@@ -389,6 +390,18 @@ export async function send(text: string) {
 	const found = recall(ws.texts, text, noteTitle, 3, chat.project);
 	if (found.length) step({ icon: "search", label: `Found ${found.length} ${found.length === 1 ? "note" : "notes"} that may help`, detail: found.map((f) => `• ${noteTitle(f.path)}`).join("\n") });
 	const read = new Set<string>();
+	/** While the AI writes a long change (a note's whole text), a line saying what and how far along. */
+	let writeStep: Step | undefined;
+	let lastShown = 0;
+	const writing = (call: { name: string; args: string }) => {
+		if (!WRITES.has(call.name) || call.args.length < 200 || Date.now() - lastShown < 400) return;
+		lastShown = Date.now();
+		const target = /"(?:path|name|title|board)"\s*:\s*"([^"]+)"/.exec(call.args)?.[1] ?? "a change";
+		const words = Math.round(call.args.length / 6);
+		writeStep ??= step({ icon: "pencil", label: "", active: true });
+		writeStep.label = `Writing “${target.split("/").pop()}”… about ${words} words so far`;
+		writeStep.active = true;
+	};
 	try {
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let content = "";
@@ -410,6 +423,7 @@ export async function send(text: string) {
 					if (t.id) calls[i].id = t.id;
 					if (t.function?.name) calls[i].name += t.function.name;
 					if (t.function?.arguments) calls[i].args += t.function.arguments;
+					writing(calls[i]);
 				}
 			});
 			let stopped: boolean;
@@ -421,6 +435,10 @@ export async function send(text: string) {
 				stopped = await ask(Math.floor(CONTEXT * 0.6));
 			}
 			const real = calls.filter(Boolean);
+			if (writeStep) {
+				reply.steps.splice(reply.steps.indexOf(writeStep), 1);
+				writeStep = undefined;
+			}
 			if (stopped || !real.length) {
 				history.push({ role: "assistant", content, raw });
 				break;
@@ -489,13 +507,15 @@ export async function send(text: string) {
 		const linked = [...reply.text.matchAll(/\[\[([^\]|#]+)/g)].map((m) => ws.resolve(m[1].trim())).filter((p): p is string => !!p);
 		const sources = [...new Set([...read, ...linked])].filter((p) => ws.files.includes(p));
 		if (sources.length) say(reply, { sources });
-		if (planStep) Object.assign(planStep, { label: `Planned ${plan.length} ${plan.length === 1 ? "change" : "changes"}`, active: false });
-		if (plan.length) say(reply, { plan: { changes: plan, status: "waiting", undo: [] } });
-		if (!reply.text.trim()) say(reply, { text: plan.length ? "Here's what I'd like to do:" : "…" });
 	} catch (e) {
 		const message = e instanceof Error ? e.message : String(e);
-		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : message });
+		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : plan.length ? `${message} What it planned before stopping is below.` : message });
 	} finally {
+		// Even if the answer was cut off, what was planned so far is kept.
+		if (planStep) Object.assign(planStep, { label: `Planned ${plan.length} ${plan.length === 1 ? "change" : "changes"}`, active: false });
+		if (plan.length) say(reply, { plan: { changes: plan, status: "waiting", undo: [] } });
+		if (!reply.text.trim() && !reply.error) say(reply, { text: plan.length ? "Here's what I'd like to do:" : "…" });
+		if (writeStep) reply.steps.splice(reply.steps.indexOf(writeStep), 1);
 		for (const s of reply.steps) s.active = false;
 		void saveChat().catch(() => {});
 		say(reply, { streaming: false });
@@ -531,7 +551,7 @@ export async function approve(m: ChatMessage) {
 	await backUp("Before the AI's changes").catch(() => {});
 	let done = 0, failed = 0;
 	// Clearing the cave goes first and the home page last, so the note it points to is made first.
-	const rank = (c: Change) => (c.tool === "clear_cave" ? 0 : c.tool === "set_home" ? 2 : 1);
+	const rank = (c: Change) => (c.tool === "clear_cave" ? 0 : c.tool === "set_home" || c.tool === "create_home" ? 2 : 1);
 	const order = [...plan.changes].sort((a, b) => rank(a) - rank(b));
 	for (const c of order) {
 		if (!c.checked) continue;

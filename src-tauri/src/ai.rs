@@ -481,6 +481,8 @@ pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, 
             .args(["-ngl", &gpu_layers.to_string(), "-c", &context.to_string(), "--jinja"])
             // A smaller memory of the chat so far (half size, nearly the same quality), so more fits.
             .args(["-ctk", "q8_0"])
+            // Long answers on a slow PC can take a while; don't cut them off (the default is 10 minutes).
+            .args(["--timeout", "3600"])
             // Only the chosen graphics card, not the one built into the processor.
             .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
             .current_dir(server.parent().unwrap_or(Path::new("."))),
@@ -543,7 +545,7 @@ pub async fn ai_chat(engine: State<'_, Engine>, body: String, on_chunk: Channel<
         if engine.cancel_chat.load(Ordering::SeqCst) {
             break;
         }
-        carry.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
+        carry.extend_from_slice(&chunk.map_err(|e| format!("The AI engine stopped answering partway ({}). If it keeps happening, try a smaller model under AI models.", reasons(&e)))?);
         let whole = match std::str::from_utf8(&carry) {
             Ok(_) => carry.len(),
             Err(e) => e.valid_up_to(),

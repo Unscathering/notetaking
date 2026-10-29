@@ -84,6 +84,18 @@ export const TOOLS = [
 	fn("set_look", "Propose giving a folder or note a color and/or icon in the sidebar.", { path: s("The folder or note."), color: s("Color name or #hex, or 'none'."), icon: s(`One of ${FOLDER_ICONS.join(", ")}, one emoji, or 'none'.`) }, ["path"]),
 	fn("set_home", "Propose making a note the cave's home page.", { path: s("The note.") }, ["path"]),
 	fn(
+		"create_space",
+		"Propose a whole area of the cave in one go: a folder with a color and icon, and a ready-made dashboard note inside it (live lists of its notes and tasks). Use this, not create_folder plus create_note, when the user wants folders with dashboards or a 'second brain'. Basalt writes the dashboard; you only give the name and a line about it.",
+		{ name: s("The folder's name, like 'Writing'."), about: s("One short line: what goes in it."), color: s("red, orange, yellow, green, teal, blue, indigo, purple, pink or gray."), icon: s(`One of ${FOLDER_ICONS.join(", ")}, or one emoji.`) },
+		["name", "about"]
+	),
+	fn(
+		"create_home",
+		"Propose a home page: a dashboard note that links to every area's dashboard and shows what's due, made the cave's home page. Basalt writes it. Use it once, after create_space for each area.",
+		{ title: s("The page's name; 'Home' if left out."), spaces: { type: "array", items: { type: "string" }, description: "The names of the areas (folders) to link to." } },
+		["spaces"]
+	),
+	fn(
 		"change_appearance",
 		"Propose changing how the app looks. Give only what should change. Call get_appearance first to see the choices.",
 		{ theme: s("A theme name, applied first."), accent: s("Accent color, #hex or a color name."), material: s("solid, transparent, glass, frosted or liquid."), wallpaper: s("A wallpaper name, or 'none'."), heading_style: s("plain, underline, bar, accent, gradient or caps."), note_font: s("A font name."), sidebar_style: s("A sidebar style name."), corners: n("Corner rounding in pixels, 0 to 24."), text_size: n("Note text size in pixels, 12 to 26.") }
@@ -91,7 +103,7 @@ export const TOOLS = [
 	fn("remember", "Save one new, lasting fact about the person (their likes, projects, how they like to work) to your memory note. Not about the cave, its notes or folders, and never something already in your memory. At most once or twice per message.", { fact: s("One short sentence."), about: s('"person" (default) or "project": a fact about the project this chat belongs to, if it has one.') }, ["fact"]),
 ];
 
-export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "change_appearance"]);
+export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "create_space", "create_home", "change_appearance"]);
 
 const LOOKS_TOOLS = new Set(["get_appearance", "change_appearance"]);
 const LOOKS_WORDS = /\b(theme|look|looks|appearance|colou?r|dark|light|font|wallpaper|background|glass|frosted|accent|corner|style|pretty|aesthetic|design)\b/i;
@@ -165,6 +177,17 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 	if (tool === "clear_cave") return cleared ? "That's already in the plan." : ws.files.length || ws.folders.length ? "" : "The cave is already empty.";
 	if (tool === "change_appearance") return Object.keys(a).length ? "" : "Say what to change.";
 	if (tool === "add_card") return !str(a.board) ? "Name the board." : exists(a.board) ? (str(a.title) ? "" : "Give the card a title.") : missing(a.board);
+	if (tool === "create_space") {
+		const name = folderPath(a.name);
+		if (!name || name.includes("/")) return "Give the area a simple name, like 'Writing'.";
+		if (planned.some((c) => c.tool === "create_space" && folderPath(c.args.name).toLowerCase() === name.toLowerCase())) return `"${name}" is already in the plan.`;
+		return there(name) ? `There's already a folder called "${name}".` : "";
+	}
+	if (tool === "create_home") {
+		if (planned.some((c) => c.tool === "create_home")) return "The home page is already in the plan.";
+		const title = str(a.title) || "Home";
+		return !cleared && ws.files.includes(notePath(title)) ? `"${title}" already exists. Pick another title.` : "";
+	}
 	if (!p) return "The path is empty. Give the name of the note or folder.";
 	if (/[*?"<>|]/.test(p)) return `"${p}" has characters a file name can't have.`;
 	if (planned.some((c) => c.tool === tool && JSON.stringify(c.args) === JSON.stringify(a))) return "That's already in the plan. Don't repeat it.";
@@ -213,6 +236,10 @@ export function describe(tool: string, a: Args): { summary: string; icon: IconNa
 			return { summary: `Give “${p}” ${[str(a.color) && `the color ${str(a.color)}`, str(a.icon) && `the icon ${str(a.icon)}`].filter(Boolean).join(" and ") || "no look"}`, icon: "palette" };
 		case "set_home":
 			return { summary: `Make “${noteTitle(notePath(p))}” the home page`, icon: "home" };
+		case "create_space":
+			return { summary: `Make the area “${folderPath(a.name)}” with its own dashboard${str(a.about) ? `: ${str(a.about)}` : ""}`, icon: "folderPlus" };
+		case "create_home":
+			return { summary: `Make a home page “${str(a.title) || "Home"}” linking to ${(Array.isArray(a.spaces) ? a.spaces : []).length || "every"} areas`, icon: "home" };
 		case "change_appearance":
 			return { summary: `Change the look: ${Object.entries(a).map(([k, v]) => `${k.replace("_", " ")} ${String(v)}`).join(", ")}`, icon: "palette" };
 	}
@@ -344,6 +371,32 @@ export async function apply(c: Change): Promise<Undo> {
 				await ws.saveMeta();
 			};
 		}
+		case "create_space": {
+			const name = folderPath(a.name);
+			await cave.mkdir(name);
+			const dashboard = await cave.create(name, `${name} dashboard`, spaceDashboard(name, str(a.about)));
+			await ws.refresh();
+			await ws.setLook(name, { color: color(a.color) || undefined, icon: iconName(a.icon) || undefined });
+			await useDashboardSnippet();
+			return async () => {
+				await ws.remove(dashboard);
+				await ws.remove(name);
+			};
+		}
+		case "create_home": {
+			const title = str(a.title) || "Home";
+			const spaces = (Array.isArray(a.spaces) ? a.spaces : []).map((x) => folderPath(x)).filter(Boolean);
+			const made = await cave.create("", title, homeDashboard(title, spaces.length ? spaces : ws.folders.filter((f) => !f.includes("/"))));
+			await ws.refresh();
+			const before = ws.meta.home;
+			await ws.setHome(made);
+			await useDashboardSnippet();
+			return async () => {
+				ws.meta.home = before;
+				await ws.saveMeta();
+				await ws.remove(made);
+			};
+		}
 		case "change_appearance": {
 			const before = cloneTheme(theme);
 			changeAppearance(a);
@@ -351,6 +404,68 @@ export async function apply(c: Change): Promise<Undo> {
 		}
 	}
 	throw new Error("Basalt doesn't know how to do that yet.");
+}
+
+// ---- Ready-made dashboards (so the AI doesn't have to write them) ----
+
+const blocks = (...parts: string[]) => parts.map((p) => `\`\`\`basalt\n${p}\n\`\`\``).join("\n\n");
+
+/** An area's dashboard: what it's for, its notes as cards, its open tasks, and notes tagged with it. */
+function spaceDashboard(name: string, about: string): string {
+	const tag = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-");
+	return `---
+cssclass: dashboard
+description: ${about || `Everything about ${name.toLowerCase()}.`}
+---
+# ${name}
+
+${blocks(`title: Notes
+from: ${name}
+show: cards
+sort: name`, `title: Open tasks
+list: tasks
+from: ${name}`, `title: Due this week
+list: tasks
+from: ${name}
+due: week
+show: count`)}
+
+## Ideas and next steps
+- [ ] 
+
+Tag notes elsewhere with #${tag} to keep them connected to ${name}.
+`;
+}
+
+/** The home page: every area's dashboard, what's due, and habits. */
+function homeDashboard(title: string, spaces: string[]): string {
+	return `---
+cssclass: dashboard
+description: Where every day starts.
+---
+# ${title}
+
+## Areas
+${spaces.map((s) => `- [[${s} dashboard|${s}]]`).join("\n")}
+
+${blocks(`title: Due this week
+list: tasks
+due: week`, `title: Overdue
+list: tasks
+due: overdue
+show: count`, `title: Habits
+list: habits
+days: 14`)}
+`;
+}
+
+/** Dashboards look best with the dashboard snippet; turn it on once. */
+async function useDashboardSnippet() {
+	const { EXAMPLES, newSnippet, loadSnippets, snippets } = await import("../snippets.svelte");
+	await loadSnippets();
+	if (snippets.names.some((n) => n.startsWith("dashboard"))) return;
+	const ex = EXAMPLES.find((e) => e.name === "dashboard");
+	if (ex) await newSnippet("dashboard", ex.css);
 }
 
 /** Copies the notes, folders and looks that match, and returns how to put them back. */
