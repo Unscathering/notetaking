@@ -101,6 +101,10 @@ check again before a public launch.
   tracker. The focus timer is `src/lib/focus.svelte.ts` and
   `ui/FocusTimer.svelte` (in the bottom bar); finished sessions are logged
   in today's note. `ensureDay` in `templates.ts` finds or makes a day's note.
+- Web clipper: `src/lib/clip.ts` and `ui/ClipDialog.svelte` (Ctrl+Shift+K).
+  The desktop app fetches the page (`src-tauri/src/web.rs`), Readability
+  finds the article and Turndown makes it Markdown (both loaded only then);
+  it's saved in `Clippings` with `source` and `clipped` properties.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
@@ -206,7 +210,7 @@ Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
 Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
 grammar (selection or whole note), Ctrl+Shift+D today's note, Ctrl+Shift+N
 new note from a template, Ctrl+click a note to open it on the right, Ctrl+Shift+P print or save as
-PDF.
+PDF, Ctrl+Shift+K clip a web page.
 
 ## Status
 

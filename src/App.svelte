@@ -15,6 +15,7 @@
 	import DatabaseView from "./lib/ui/DatabaseView.svelte";
 	import SplitPane from "./lib/ui/SplitPane.svelte";
 	import FocusTimer from "./lib/ui/FocusTimer.svelte";
+	import ClipDialog from "./lib/ui/ClipDialog.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -212,6 +213,8 @@
 	<CaveSwitcher {ms} />
 {:else if ws.modal === "backups"}
 	<Backups {ms} />
+{:else if ws.modal === "clip"}
+	<ClipDialog {ms} />
 {:else if ws.modal === "history" && ws.historyOf}
 	<NoteHistory {ms} path={ws.historyOf} />
 {/if}

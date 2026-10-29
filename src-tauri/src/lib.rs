@@ -1,5 +1,6 @@
 mod ai;
 mod update;
+mod web;
 
 use tauri::Manager;
 
@@ -26,6 +27,7 @@ pub fn run() {
             ai::ai_chat,
             ai::ai_stop_chat,
             update::update_install,
+            web::clip_fetch,
         ])
         .build(tauri::generate_context!())
         .expect("Basalt could not start")
