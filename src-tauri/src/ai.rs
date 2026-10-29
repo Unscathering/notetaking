@@ -111,7 +111,7 @@ fn find_server(dir: &Path) -> Option<PathBuf> {
     None
 }
 
-fn quiet(cmd: &mut Command) -> &mut Command {
+pub(crate) fn quiet(cmd: &mut Command) -> &mut Command {
     // No black console window flashing up on Windows.
     #[cfg(windows)]
     {
@@ -121,7 +121,7 @@ fn quiet(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-fn client() -> Result<reqwest::Client, String> {
+pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("Basalt")
         .build()

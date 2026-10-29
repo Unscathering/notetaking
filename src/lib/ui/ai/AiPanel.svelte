@@ -14,6 +14,7 @@
 	import { icon } from "../icons";
 	import ModelPicker from "./ModelPicker.svelte";
 	import ClaudeSettings from "./ClaudeSettings.svelte";
+	import MicButton from "../MicButton.svelte";
 	import { claudeName, usingClaude } from "../../ai/claude.svelte";
 	import PlanCard from "./PlanCard.svelte";
 	import Privacy from "./Privacy.svelte";
@@ -321,6 +322,7 @@
 			</label>
 			<div class="box">
 				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys}></textarea>
+				<MicButton {ms} onText={(t) => { draft = draft ? `${draft.trimEnd()} ${t}` : t; requestAnimationFrame(grow); input?.focus(); }} />
 				{#if chat.busy}
 					<button class="send stop" onclick={stopAnswer} title="Stop">{@html icon("stop", 14)}</button>
 				{:else}

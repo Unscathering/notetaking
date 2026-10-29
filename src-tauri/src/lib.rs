@@ -1,6 +1,7 @@
 mod ai;
 mod update;
 mod web;
+mod speech;
 
 use tauri::Manager;
 
@@ -49,6 +50,9 @@ pub fn run() {
             ai::ai_stop_chat,
             update::update_install,
             web::clip_fetch,
+            speech::speech_status,
+            speech::speech_install,
+            speech::speech_transcribe,
         ])
         .build(tauri::generate_context!())
         .expect("Basalt could not start")

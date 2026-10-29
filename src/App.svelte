@@ -16,6 +16,19 @@
 	import SplitPane from "./lib/ui/SplitPane.svelte";
 	import FocusTimer from "./lib/ui/FocusTimer.svelte";
 	import ClipDialog from "./lib/ui/ClipDialog.svelte";
+	import MicButton from "./lib/ui/MicButton.svelte";
+	import { activeEditor } from "./lib/editor/active";
+
+	/** Spoken words go where the cursor is, with a space before them if needed. */
+	function dictate(text: string) {
+		const view = activeEditor.view;
+		if (!view) return;
+		const at = view.state.selection.main.head;
+		const before = view.state.sliceDoc(Math.max(0, at - 1), at);
+		const insert = (before && !/\s/.test(before) ? " " : "") + text;
+		view.dispatch({ changes: { from: at, to: view.state.selection.main.to, insert }, selection: { anchor: at + insert.length } });
+		view.focus();
+	}
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -192,6 +205,7 @@
 		{/if}
 		<footer class="status">
 			<FocusTimer {ms} />
+			<MicButton {ms} onText={dictate} />
 			<span>{words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>

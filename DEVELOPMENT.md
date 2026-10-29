@@ -110,6 +110,10 @@ check again before a public launch.
   from GitHub and installs entries; `ui/settings/GalleryPage.svelte`.
 - `basalt://` links: `src/lib/links.ts` (with the deep-link and
   single-instance plugins in `src-tauri/src/lib.rs`).
+- Voice typing: `src/lib/speech.svelte.ts` records 16 kHz WAV and
+  `src-tauri/src/speech.rs` runs whisper.cpp (downloaded once, with a
+  voice model, into the app data folder; on the processor). The mic is
+  `ui/MicButton.svelte`, in the bottom bar and the AI chat box.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
@@ -243,9 +247,18 @@ Version 0.1.0 plus, so far:
   tab as a setting, direct download links, a portable version and update
   notices.
 
+- 0.3 to 0.6: Basalt AI on your PC (chat, plans with undo, memory, saved
+  chats and projects, answers from notes with sources, writing help in three
+  modes, a speed test), or Claude with your own API key; in-app updates;
+  daily notes, templates and automatic backups.
+- 0.7 to 0.12: graph view, note history, calendar and weekly AI recap,
+  modding (CSS snippets, cssclass, live blocks, embeds, MODDING.md), outline,
+  database view, split panes, export and share, habits and a focus timer,
+  web clipper, the gallery, basalt:// links and voice typing.
+
 ## Next steps
 
-1. AI step 2: writing help in the editor. Step 3: the mic button.
-2. G. Click-to-customize: click any part of the app to style it.
-2. A local AI helper (Ollama) that can read and suggest edits you approve.
-3. Custom title bar, backlinks, split panes, daily notes, graph view.
+1. Canvas (an endless whiteboard of notes, pictures and arrows).
+2. Flashcards with spaced repetition; presentation mode.
+3. A phone companion.
+4. Click-to-customize: click any part of the app to style it.
