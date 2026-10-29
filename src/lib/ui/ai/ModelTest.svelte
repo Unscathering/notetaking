@@ -26,7 +26,7 @@
 
 <section class="test">
 	<h3>How good is each model at Basalt?</h3>
-	<p class="hint"><b>{JOB_COUNT} tests in {AREA_COUNT} areas</b>: organizing, dashboards, customizing, grammar fixes, answering from notes, and care. They run in a practice cave and are scored; your own notes are never touched.</p>
+	<p class="hint"><b>{JOB_COUNT} tests in {AREA_COUNT} areas</b>: organizing, dashboards, customizing, grammar fixes, answering from notes, care, and knowing its limits. Questions are picked fresh each run, some with typos. They run in a practice cave and are scored; your own notes are never touched.</p>
 
 	{#if bench.running}
 		{@const p = progress(now)}
@@ -72,6 +72,9 @@
 						<span class="meta">{r.seconds.toFixed(r.seconds < 10 ? 1 : 0)} s a job{r.wordsPerSecond ? ` · ${Math.round(r.wordsPerSecond)} words/s` : ""}</span>
 						<span class="chev" class:down={open === r.model}>{@html icon("chevron", 12)}</span>
 					</button>
+					{#if r.setup || r.readsPerSecond}
+						<p class="setup">{@html icon("cpu", 11)} {[r.setup, r.readsPerSecond ? `reads ${Math.round(r.readsPerSecond)} words/s` : ""].filter(Boolean).join(" · ")}</p>
+					{/if}
 					{#if r.servedBy && r.servedBy !== r.model}
 						<p class="wrong">{@html icon("alert", 12)} The engine had {label(r.servedBy)} loaded, not {label(r.model)}, so this result is really about {label(r.servedBy)}. Test it again.</p>
 					{/if}
@@ -403,6 +406,14 @@
 		line-height: 1.45;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+	.setup {
+		display: flex;
+		gap: 6px;
+		margin: 6px 0 0;
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 1.4;
 	}
 	.wrong {
 		display: flex;

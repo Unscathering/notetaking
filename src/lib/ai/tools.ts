@@ -689,6 +689,21 @@ function liveBlock(a: Args): string {
 }
 
 /**
+ * A live list by a tag no note has, where a folder has that name ("tag:
+ * recipe" with a Recipes folder), is meant to list the folder: it's put right
+ * before it's checked. Shared with the model test.
+ */
+export function fixLiveBlock(a: Args, tagUsed: (tag: string) => boolean, folders: string[]): Args {
+	const tag = str(a.tag).replace(/^#/, "").toLowerCase();
+	if (!tag || tagUsed(tag) || str(a.from)) return a;
+	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
+	const folder = folders.find((f) => stem(f.split("/").pop()!) === stem(tag));
+	if (!folder) return a;
+	const { tag: _, ...rest } = a;
+	return { ...rest, from: folder, list: str(a.list) === "tags" ? "notes" : a.list };
+}
+
+/**
  * A live list by a tag no note has would show nothing; usually the AI meant a
  * folder ("tag: recipe" for the Recipes folder). Shared with the model test.
  */

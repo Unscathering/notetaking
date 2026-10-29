@@ -130,7 +130,10 @@ check again before a public launch.
   about the look. Big jobs are one tool each (`create_space`,
   `create_dashboard`, `create_project`, `create_snippet`…) and Basalt writes
   the result. `basalt_help` looks things up in this repo's MODDING.md
-  (`manual.ts`). `agent.svelte.ts` runs the conversation (live steps the
+  (`manual.ts`). `agent.svelte.ts` runs the conversation, in one of two modes
+  (`chat.access`): "plan" shows the changes as a plan to approve, "full"
+  makes them as soon as the reply ends (wiping the cave still waits for a
+  click); it (live steps the
   user can open, no repeated calls, at most two memories a message, older
   messages trimmed to fit the engine's `CONTEXT`) and the memory note
   (`.basalt/ai/memory.md` in the cave, hidden from the sidebar). It also
@@ -138,7 +141,8 @@ check again before a public launch.
   and projects: a chat can belong to a folder, whose chats share a memory in
   `.basalt/ai/projects/`. The speed test is `speedTest` in `writer.ts`.
   The model test (`bench.svelte.ts`, shown by `ui/ai/ModelTest.svelte`)
-  runs 18 Basalt jobs in a practice cave that exists only in memory: the
+  runs one of each pair of Basalt jobs (`PAIRS`; the second of each is
+  worded differently, often with typos) in a practice cave that exists only in memory: the
   real instructions, tools and request sorting, with looking around
   answered from the practice cave and planned changes scored, never made.
   To add a job, add it to `JOBS` with a `score` that checks the plan and

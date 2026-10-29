@@ -37,6 +37,8 @@ export const ai = $state({
 	writerModel: saved().writerModel,
 	/** Whether the writing help model is loaded. */
 	writerRunning: false,
+	/** How the main model was last loaded, for the model test to show. */
+	setup: null as null | { model: string; gpuLayers: number; layers: number; cpuMoe: number; vramMb: number; speedups: boolean },
 	folder: "",
 	download: null as { what: string; done: number; total: number } | null,
 	running: false,
@@ -268,6 +270,7 @@ async function start(slot: Slot) {
 		if (slot === "writer") ai.writerRunning = true;
 		else {
 			ai.running = true;
+			ai.setup = { model: file.file, gpuLayers: args.gpuLayers, layers: choice?.layers ?? 0, cpuMoe: args.cpuMoe, vramMb: hw.vramMb, speedups: !plainStart.has(file.file) };
 			cacheSaved = false;
 			// Pick up where the last chat's start left off, if this model saved one.
 			if (!plainStart.has(file.file)) await invoke("ai_cache", { action: "restore", file: cacheFile(file.file) }).catch(() => {});

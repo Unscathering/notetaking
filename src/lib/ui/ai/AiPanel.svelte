@@ -5,7 +5,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { addModelFile, ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
 	import { SvelteSet } from "svelte/reactivity";
-	import { THINKING, chat, deleteChat, loadChats, loadMemory, newChat, openChat, renameChat, saveMemory, send, setProject, updateMemory, type ChatInfo } from "../../ai/agent.svelte";
+	import { THINKING, chat, deleteChat, loadChats, loadMemory, newChat, openChat, renameChat, saveMemory, send, setAccess, setProject, updateMemory, type ChatInfo } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
 	import { speedTest, warmUp, type SpeedResult } from "../../ai/writer";
 	import { markdown } from "../../ai/markdown";
@@ -330,6 +330,11 @@
 		</div>
 
 		<div class="composer">
+			<div class="above">
+			<div class="access" role="radiogroup" aria-label="What the AI may do">
+				<button role="radio" aria-checked={chat.access === "plan"} class:on={chat.access === "plan"} disabled={chat.busy} onclick={() => setAccess("plan")} title="Plan first: the AI shows its changes as a plan, and nothing happens until you press Do it">{@html icon("list", 11)} Plan first</button>
+				<button role="radio" aria-checked={chat.access === "full"} class:on={chat.access === "full"} disabled={chat.busy} onclick={() => setAccess("full")} title="Full access: the AI makes its changes as soon as it's done answering (and asks when it's unsure). Everything can still be undone.">{@html icon("zap", 11)} Full access</button>
+			</div>
 			<label class="project" title="Put this chat in a project: a folder whose chats share what they learn">
 				{@html icon("folder", 12)}
 				<select value={chat.project} onchange={(e) => setProject((e.target as HTMLSelectElement).value)} disabled={chat.busy}>
@@ -337,6 +342,7 @@
 					{#each ws.folders as f (f)}<option value={f}>{f}</option>{/each}
 				</select>
 			</label>
+			</div>
 			<div class="box">
 				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys}></textarea>
 				<MicButton {ms} onText={(t) => { draft = draft ? `${draft.trimEnd()} ${t}` : t; requestAnimationFrame(grow); input?.focus(); }} />
@@ -1005,6 +1011,44 @@
 	}
 	.mini:hover {
 		color: var(--text);
+	}
+	.above {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 10px;
+		margin: 0 0 6px 4px;
+	}
+	.above .project {
+		margin: 0;
+	}
+	.access {
+		display: inline-flex;
+		padding: 2px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+	}
+	.access button {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 11px;
+		cursor: pointer;
+		transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.access button.on {
+		background: var(--accent-soft);
+		color: var(--accent);
+		font-weight: 600;
+	}
+	.access button:disabled {
+		cursor: default;
 	}
 	.project {
 		display: inline-flex;

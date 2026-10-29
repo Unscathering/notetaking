@@ -65,3 +65,17 @@ function excerpt(text: string, want: string[]): string {
 	}
 	return out.trim() || text.slice(0, 400);
 }
+
+/**
+ * Whether an answer was taken from a note's text: they share at least two
+ * telling bits (numbers, dates, names). For listing the notes an answer came
+ * from when the AI forgot to link them.
+ */
+export function echoes(answer: string, text: string): boolean {
+	// Numbers and dates, and capitalized names that don't just start a sentence.
+	const bits = (t: string) => new Set(t.match(/\d+|(?<![.!?:]\s+|^|\n\s*)\b[A-Z][a-z]{2,}\b/g) ?? []);
+	const from = bits(text);
+	let shared = 0;
+	for (const b of bits(answer)) if (from.has(b) && ++shared >= 2) return true;
+	return false;
+}

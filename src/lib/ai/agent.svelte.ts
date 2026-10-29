@@ -15,8 +15,8 @@
 import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
 import { CONTEXT, ai, saveCache, stream, writerAwake } from "./engine.svelte";
-import { GROUPS, TOOLS, WRITES, apply, check, context, describe, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
-import { recall, type Found } from "./recall";
+import { GROUPS, TOOLS, WRITES, apply, check, context, describe, fixLiveBlock, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
+import { echoes, recall, type Found } from "./recall";
 import { usingClaude } from "./claude.svelte";
 import { noteTitle } from "../cave";
 import { backUp } from "../backups.svelte";
@@ -90,7 +90,20 @@ let turnStart = 0;
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+/** How much the AI may do on its own: plan changes for you to approve, or make them straight away. */
+export type Access = "plan" | "full";
+const ACCESS_KEY = "basalt.ai-access";
+const savedAccess = (): Access => {
+	try {
+		return localStorage.getItem(ACCESS_KEY) === "full" ? "full" : "plan";
+	} catch {
+		return "plan";
+	}
+};
+
 export const chat = $state({
+	/** Plan first (you approve every change) or full access (changes happen when the reply ends). */
+	access: savedAccess(),
 	id: newId(),
 	/** The project folder this chat belongs to, or "". */
 	project: "",
@@ -305,11 +318,15 @@ export function foundNotes(found: Found[]): string {
  * request is the same and the engine can reuse its work on it.
  */
 function system(memory: string, found: Found[] = []): string {
-	return instructions(memory, chat.project, chat.projectMemory, usingClaude() ? aboutNow(found) : "");
+	return instructions(memory, chat.project, chat.projectMemory, usingClaude() ? aboutNow(found) : "", chat.access);
 }
 
 /** The AI's instructions, for a chat or for the model test (which has no memory or project). */
-export function instructions(memory: string, projectName = "", projectMemory = "", aboutNowText = ""): string {
+export function instructions(memory: string, projectName = "", projectMemory = "", aboutNowText = "", access: Access = "plan"): string {
+	const changes =
+		access === "full"
+			? `- You have full access: every change you propose (making, editing, moving, renaming, deleting) is made as soon as your reply ends, and the user can undo it. So change things only when the user asks for a change; when you aren't sure what they want, ask 2 to 4 short questions instead of changing anything. Don't ask "should I go ahead?" for something they clearly asked for. Say in a sentence or two what you're changing.`
+			: `- Every change (making, editing, moving, renaming, deleting) is only proposed. All your proposed changes appear below your reply as one plan, and the user presses "Do it" once. That plan IS the confirmation: never ask "should I go ahead?", "are you sure?" or "do you want me to?" in the chat. Just propose the changes and say in a sentence or two what the plan does. Never say something is already done.`;
 	const now = aboutNowText ? `\n\n${aboutNowText}` : "";
 	const project = projectName
 		? `\n\nThis chat is part of the project "${projectName}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
@@ -326,7 +343,9 @@ How you work:
 - When you answer from the user's notes, name each note you used as a link, like [[Garden plan]]. Say only what the notes say, and copy dates, times, names and numbers exactly as the note writes them; if the notes don't cover it, say so instead of guessing.
 - Paths start inside the cave: "School/Math", never with the cave's own name in front.
 - Use list_cave, read_note, search_notes and list_tags freely to understand things before answering. Don't guess what's in a note: read it. Use the exact names list_cave shows.
-- Every change (making, editing, moving, renaming, deleting) is only proposed. All your proposed changes appear below your reply as one plan, and the user presses "Do it" once. That plan IS the confirmation: never ask "should I go ahead?", "are you sure?" or "do you want me to?" in the chat. Just propose the changes and say in a sentence or two what the plan does. Never say something is already done.
+${changes}
+- A question is not a request to change anything: answer it, and leave the notes as they are (no ticking tasks off, no adding to notes) unless the user asks.
+- When something can't be done in Basalt (sending email, browsing the web, other apps, things your tools can't do), say so plainly in a sentence and suggest what Basalt can do instead. Don't pretend or keep trying.
 - When the user tells you what to do, plan it straight away. Only ask questions first when you truly can't tell what they want (like a vague "set up my cave"); then ask 2 to 4 short questions in one message and wait.
 - To delete everything in the cave, use clear_cave (never delete_item with an empty name). Delete only when the user clearly asks.
 - Put each folder's notes and boards inside that folder, with paths like "Writing/Writing board", never at the top level unless asked.
@@ -485,7 +504,7 @@ export async function send(text: string) {
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
-				stream({ messages: fit(system(memory, found), tools, budget, usingClaude() ? "" : aboutNow(found)), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true, id_slot: 0, effort: "medium" }, (d) => {
+				stream({ messages: fit(system(memory, found), tools, budget, usingClaude() ? "" : aboutNow(found)), tools, temperature: 0.3, max_tokens: 6000, dry_multiplier: 0.8, cache_prompt: true, id_slot: 0, effort: "medium" }, (d) => {
 					if (d.basalt_raw) raw = d.basalt_raw as unknown[];
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
@@ -552,6 +571,7 @@ export async function send(text: string) {
 					result = groupOf(call.name) === "style" ? "The user didn't ask about the app's look, so leave it as it is." : `There's no tool called ${call.name}.`;
 					refused = true;
 				} else if (WRITES.has(call.name)) {
+					if (call.name === "add_live_block") args = fixLiveBlock(args, (t) => ws.tags.has(t), ws.folders);
 					const problem = check(call.name, args, plan);
 					if (problem) {
 						result = `Not added to the plan: ${problem}`;
@@ -586,7 +606,9 @@ export async function send(text: string) {
 		}
 		// Sources: notes it read, and notes it linked to in its answer.
 		const linked = [...reply.text.matchAll(/\[\[([^\]|#]+)/g)].map((m) => ws.resolve(m[1].trim())).filter((p): p is string => !!p);
-		const sources = [...new Set([...read, ...linked])].filter((p) => ws.files.includes(p));
+		// Notes handed to it with the message count too, when the answer plainly came from them.
+		const used = plan.length ? [] : found.filter((f) => echoes(reply.text, f.excerpt)).map((f) => f.path);
+		const sources = [...new Set([...read, ...linked, ...used])].filter((p) => ws.files.includes(p));
 		if (sources.length) say(reply, { sources });
 	} catch (e) {
 		failed = true;
@@ -602,6 +624,8 @@ export async function send(text: string) {
 		say(reply, { streaming: false, thinking: false });
 		chat.busy = false;
 	}
+	// Full access: the changes are made now, without waiting for "Do it". Wiping the whole cave still waits for a click.
+	if (!failed && chat.access === "full" && reply.plan?.status === "waiting" && !reply.plan.changes.some((c) => c.tool === "clear_cave")) await approve(reply);
 	// Keep the start of this chat for after the engine's next nap.
 	if (!failed) void saveCache();
 	if (++sinceMemory >= 4) void updateMemory();
@@ -719,6 +743,15 @@ export async function undo(m: ChatMessage) {
 	m.plan.status = "undone";
 	history.push({ role: "user", content: "(I undid those changes.)" });
 	await saveChat();
+}
+
+export function setAccess(access: Access) {
+	chat.access = access;
+	try {
+		localStorage.setItem(ACCESS_KEY, access);
+	} catch {
+		// Fine; it's remembered until Basalt closes.
+	}
 }
 
 /** Starts over, saving what was learned to memory first. */

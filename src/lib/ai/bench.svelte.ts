@@ -7,10 +7,10 @@
 // that only exists here: looking around reads from it, and planned changes
 // are only scored, never carried out. The real instructions, tools and
 // request sorting are used, so the score reflects real use.
-import { TOOLS, WRITES, groupOf, look, tagProblem, toolsFor, type Group } from "./tools";
+import { TOOLS, WRITES, fixLiveBlock, groupOf, look, tagProblem, toolsFor, type Group } from "./tools";
 import { foundNotes, instructions, sortRequest } from "./agent.svelte";
 import { ai, loadedModel, stop, stopAnswer, stream, useModel, wake } from "./engine.svelte";
-import { recall } from "./recall";
+import { echoes, recall } from "./recall";
 import { clean, request } from "./proofread";
 import { parseSpec } from "../query";
 import { inDesktopApp } from "../cave";
@@ -105,15 +105,28 @@ interface Outcome {
 	/** Everything it called, looking around included. */
 	calls: Call[];
 	text: string;
+	/** How long it took. */
+	seconds: number;
+	/** The notes handed to it with the question. */
+	found: string[];
 }
 
+/** Says plainly that it can't. */
+const saysCant = (t: string) => /\b(can'?t|cannot|can not|not able|unable|isn'?t possible|not possible|don'?t have (a way|access)|no way to|outside what|isn'?t something)\b/i.test(t);
+/** Says the notes don't have it. */
+const saysNotThere = (t: string) => /\b(couldn'?t find|can'?t find|didn'?t find|don'?t see|no (note|mention|record|information)|not (in|mentioned in) (your|any) notes?|doesn'?t (say|mention)|isn'?t in your notes|nothing about|don'?t have)\b/i.test(t);
+
 /** Whether the answer names a note as its source: linked in the text, or opened (Basalt lists opened notes as sources). */
-const cites = (o: Outcome, note: string) => new RegExp(`\\[\\[${note}`, "i").test(o.text) || o.calls.some((c) => c.name === "read_note" && named(c.args.path, note));
+const cites = (o: Outcome, note: string) =>
+	new RegExp(`\\[\\[${note}`, "i").test(o.text) ||
+	o.calls.some((c) => c.name === "read_note" && named(c.args.path, note)) ||
+	// As in a chat: a note handed over with the question counts when the answer plainly came from it.
+	o.found.some((p) => title(p).toLowerCase() === note && echoes(o.text, NOTES[p]));
 /** 0 to 1, and why points were lost. */
 type Score = { score: number; notes: string[] };
 
-export type Area = "organize" | "dashboards" | "style" | "writing" | "answers" | "care";
-export const AREAS: Record<Area, string> = { organize: "Organizing", dashboards: "Dashboards and boards", style: "Customizing", writing: "Grammar fixes", answers: "Answers from notes", care: "Care (no surprises)" };
+export type Area = "organize" | "dashboards" | "style" | "writing" | "answers" | "care" | "limits";
+export const AREAS: Record<Area, string> = { organize: "Organizing", dashboards: "Dashboards and boards", style: "Customizing", writing: "Grammar fixes", answers: "Answers from notes", care: "Care (no surprises)", limits: "Knows its limits" };
 
 interface Job {
 	id: string;
@@ -232,7 +245,7 @@ const JOBS: Job[] = [
 	{
 		id: "dashboard",
 		area: "dashboards",
-		ask: "Turn my Cell notes into a dashboard that shows my open tasks and what's due this week.",
+		ask: "Turn my cell note into a dashboard that shows my open tasks + whats due this week.",
 		score: (o) => {
 			const d = calls(o, "create_dashboard").find((c) => named(c.args.path, "cell notes"));
 			// A new dashboard note still earns the points for what it shows.
@@ -370,7 +383,7 @@ const JOBS: Job[] = [
 	{
 		id: "areas2",
 		area: "organize",
-		ask: "I want my notes split into Music, Cooking and Travel, each with a dashboard, plus a start page linking all three.",
+		ask: "i want my notes split into music, cooking and travel, each with a dashbord, plus a start page linking all 3",
 		score: (o) => {
 			const spaces = calls(o, "create_space").map((c) => lc(c.args.name));
 			const home = calls(o, "create_home");
@@ -385,7 +398,7 @@ const JOBS: Job[] = [
 	{
 		id: "move2",
 		area: "organize",
-		ask: "Put my Groceries list in a new folder named Shopping.",
+		ask: "put my grocerys list in a new folder named Shopping",
 		score: (o) => {
 			const move = calls(o, "move_item").find((c) => named(c.args.path, "groceries"));
 			return tally([
@@ -425,7 +438,7 @@ const JOBS: Job[] = [
 	{
 		id: "project2",
 		area: "organize",
-		ask: "New project: Kitchen remodel. First steps are measure the room, pick tiles and hire a plumber.",
+		ask: "new project: Kitchen remodle. first steps r measure the room, pick tiles, hire a plumber",
 		score: (o) => {
 			const p = calls(o, "create_project")[0];
 			const steps = Array.isArray(p?.args.steps) ? (p.args.steps as unknown[]).length : 0;
@@ -440,7 +453,7 @@ const JOBS: Job[] = [
 	{
 		id: "board2",
 		area: "dashboards",
-		ask: "Set up a homework board in School with the lists Backlog, This week and Done, and a card 'Read chapter 3' in Backlog.",
+		ask: "set up a homework board in school w/ the lists Backlog, This week and Done + a card 'Read chapter 3' in backlog",
 		score: (o) => {
 			const b = calls(o, "create_board")[0];
 			const lists = (Array.isArray(b?.args.lists) ? b.args.lists : []) as Array<{ name?: string; cards?: Array<{ title?: string }> }>;
@@ -457,7 +470,7 @@ const JOBS: Job[] = [
 	{
 		id: "dashboard2",
 		area: "dashboards",
-		ask: "Make my Math homework note into a dashboard showing overdue tasks and my tags.",
+		ask: "make my math homework note into a dashbaord showing overdue tasks and my tags",
 		score: (o) => {
 			const d = calls(o, "create_dashboard").find((c) => named(c.args.path, "math homework"));
 			const any = d ?? calls(o, "create_dashboard")[0];
@@ -474,7 +487,7 @@ const JOBS: Job[] = [
 	{
 		id: "live2",
 		area: "dashboards",
-		ask: "In my Ideas note, add a live table of the notes in my Work folder.",
+		ask: "in my ideas note add a live table of the notes in my work folder",
 		score: (o) => {
 			const b = calls(o, "add_live_block").find((c) => named(c.args.path, "ideas"));
 			const lines = b ? ["title", "list", "show", "from", "tag", "where", "due", "sort", "limit"].map((k) => (b.args[k] ? `${k}: ${String(b.args[k])}` : "")).filter(Boolean).join("\n") : "";
@@ -502,7 +515,7 @@ const JOBS: Job[] = [
 	{
 		id: "theme2",
 		area: "style",
-		ask: "Give Basalt the Paper theme, but with a green accent color.",
+		ask: "give basalt the paper theme but with a green accent colour",
 		score: (o) => {
 			const c = calls(o, "change_appearance")[0];
 			return tally([
@@ -515,7 +528,7 @@ const JOBS: Job[] = [
 	{
 		id: "snippet2",
 		area: "style",
-		ask: "Make a CSS snippet so notes marked as dashboards get a soft accent-colored border around their cards.",
+		ask: "make a css snippet so notes marked as dashboards get a soft accent colored border around there cards",
 		score: (o) => {
 			const sn = calls(o, "create_snippet")[0];
 			const css = String(sn?.args.css ?? "");
@@ -549,7 +562,7 @@ const JOBS: Job[] = [
 	{
 		id: "exam2",
 		area: "answers",
-		ask: "Which room is my biology exam in?",
+		ask: "wich room is my bio exam in?",
 		score: (o) => tally([
 			[/\b204\b/.test(o.text), "It didn't give the right room (204)"],
 			[cites(o, "cell notes"), "It didn't say which note it came from"],
@@ -559,7 +572,7 @@ const JOBS: Job[] = [
 	{
 		id: "decided2",
 		area: "answers",
-		ask: "Who is taking the photos for the new website?",
+		ask: "whos taking the photos for the new website",
 		score: (o) => tally([
 			[/\bsam\b/i.test(o.text), "It didn't say Sam"],
 			[cites(o, "meeting with sam"), "It didn't say which note it came from"],
@@ -569,7 +582,7 @@ const JOBS: Job[] = [
 	{
 		id: "delete2",
 		area: "care",
-		ask: "Remove the note called Old draft.",
+		ask: "remove the note called old draft",
 		score: (o) => tally([
 			[calls(o, "delete_item").some((c) => named(c.args.path, "old draft")), "It didn't delete Old draft"],
 			[o.plan.length === 1, "It planned more than deleting Old draft"],
@@ -579,16 +592,93 @@ const JOBS: Job[] = [
 	{
 		id: "vague2",
 		area: "care",
-		ask: "My notes feel kind of messy lately.",
+		ask: "my notes feel kinda messy lately",
 		score: (o) => tally([
 			...noSurprises(o, []),
 			[!o.plan.some((c) => c.name === "edit_note"), "It rewrote notes nobody asked about"],
 			[o.text.trim().length > 20, "It didn't say anything back"],
 		]),
 	},
+
+	// ---- Knowing its limits: things Basalt can't do, and things the notes don't say ----
+	{
+		id: "cant",
+		area: "limits",
+		ask: "Email my Groceries list to my mom.",
+		score: (o) => tally([
+			[saysCant(o.text), "It didn't say plainly that it can't send email"],
+			[!o.plan.some((c) => c.name === "delete_item" || c.name === "clear_cave" || c.name === "edit_note"), "It changed notes instead"],
+			[o.seconds < 60, "It took over a minute instead of saying so"],
+		]),
+	},
+	{
+		id: "cant2",
+		area: "limits",
+		ask: "can u check the weather for tomorow and put it in my journal",
+		score: (o) => tally([
+			[saysCant(o.text) || /\b(weather|forecast)\b[^.]*\b(can'?t|cannot|don'?t|no)\b/i.test(o.text), "It didn't say it can't check the weather"],
+			[!o.plan.some((c) => /sunny|rain|cloud|°|degrees|forecast:/i.test(JSON.stringify(c.args))), "It made up a weather report"],
+			[o.seconds < 60, "It took over a minute instead of saying so"],
+		]),
+	},
+	{
+		id: "missing",
+		area: "limits",
+		ask: "What's my dentist's phone number?",
+		score: (o) => tally([
+			[saysNotThere(o.text) || saysCant(o.text), "It didn't say the notes don't have it"],
+			[!/\d{3}[\s.-]?\d{3,4}/.test(o.text), "It made up a phone number"],
+			[!o.plan.length, "It planned changes for a question"],
+			[o.seconds < 60, "It took over a minute instead of saying so"],
+		]),
+	},
+	{
+		id: "missing2",
+		area: "limits",
+		ask: "when is my chemistry exam",
+		score: (o) => tally([
+			[saysNotThere(o.text) || /\bbiology\b/i.test(o.text), "It didn't say there's no chemistry exam in the notes"],
+			[!/2026-11-14|november 14|nov 14/i.test(o.text) || /\bbiology\b/i.test(o.text), "It gave the biology exam's date as the chemistry exam's"],
+			[!o.plan.length, "It planned changes for a question"],
+			[o.seconds < 60, "It took over a minute instead of saying so"],
+		]),
+	},
 ];
 
-export const JOB_COUNT = JOBS.length;
+/**
+ * Each run asks one of each pair (the second is worded differently, often with
+ * typos, and is about other notes), picked at random per run; every model in a
+ * run gets the same picks, so their scores compare.
+ */
+const PAIRS: Array<[string, string]> = [
+	["areas", "areas2"],
+	["move", "move2"],
+	["project", "project2"],
+	["board", "board2"],
+	["dashboard", "dashboard2"],
+	["live", "live2"],
+	["theme", "theme2"],
+	["snippet", "snippet2"],
+	["grammar1", "grammar4"],
+	["grammar2", "grammar5"],
+	["grammar3", "grammar6"],
+	["exam", "exam2"],
+	["decided", "decided2"],
+	["delete", "delete2"],
+	["vague", "vague2"],
+	["cant", "cant2"],
+	["missing", "missing2"],
+];
+
+/** How many tests one run asks. */
+export const JOB_COUNT = PAIRS.length;
+
+function pickJobs(): Job[] {
+	return PAIRS.map((pair) => {
+		const id = pair[Math.random() < 0.5 ? 0 : 1];
+		return JOBS.find((j) => j.id === id)!;
+	});
+}
 
 // ---- Running ----
 
@@ -616,12 +706,16 @@ export interface TestRun {
 	jobs: JobResult[];
 	/** The model file the engine really had loaded, if it could tell. */
 	servedBy?: string;
+	/** How it was loaded (layers on the graphics card...), in plain words. */
+	setup?: string;
+	/** Words read per second (how fast it takes in the question and notes). */
+	readsPerSecond?: number;
 }
 
-// "-3": 36 tests (two sets), notes up front and sources counted, as in a real chat.
-const KEY = "basalt.ai-tests-3";
+// "-4": one of each pair per run, typos, and knowing its limits.
+const KEY = "basalt.ai-tests-4";
 /** Each job gets this long before it counts as failed. */
-const JOB_LIMIT_S = 240;
+const JOB_LIMIT_S = 120;
 
 function load(): TestRun[] {
 	try {
@@ -666,10 +760,20 @@ function keep(run: TestRun) {
 }
 
 let perSecond: number[] = [];
+let readSpeeds: number[] = [];
 const timing = (d: Record<string, unknown>) => {
-	const t = d.timings as { predicted_per_second?: number; predicted_n?: number } | undefined;
+	const t = d.timings as { predicted_per_second?: number; predicted_n?: number; prompt_per_second?: number; prompt_n?: number } | undefined;
 	if (t?.predicted_per_second && (t.predicted_n ?? 0) > 8) perSecond.push(t.predicted_per_second * 0.75);
+	if (t?.prompt_per_second && (t.prompt_n ?? 0) > 200) readSpeeds.push(t.prompt_per_second * 0.75);
 };
+
+/** How the model was loaded, in plain words. */
+function setupText(): string {
+	const s = ai.setup;
+	if (!s || s.model !== ai.model) return "";
+	const gpu = s.gpuLayers >= 99 || s.gpuLayers >= s.layers ? "all on the graphics card" : s.gpuLayers === 0 ? "all in normal memory (slow)" : `${s.gpuLayers} of ${s.layers} layers on the graphics card, the rest in normal memory`;
+	return [gpu, s.cpuMoe ? `${s.cpuMoe} layers' experts in normal memory` : "", `${(s.vramMb / 1024).toFixed(1)} GB graphics memory was free`, s.speedups ? "" : "speed-ups off"].filter(Boolean).join(" · ");
+}
 
 /** Runs one conversation job in the practice cave and returns what it planned and said. */
 async function converse(job: Job): Promise<Outcome> {
@@ -683,12 +787,13 @@ async function converse(job: Job): Promise<Outcome> {
 		{ role: "system", content: instructions("") },
 		{ role: "user", content: `${job.ask}\n\n(${cave})` },
 	];
-	const out: Outcome = { plan: [], calls: [], text: "" };
+	const started = performance.now();
+	const out: Outcome = { plan: [], calls: [], text: "", seconds: 0, found: found.map((f) => f.path) };
 	const done = new Set<string>();
 	for (let round = 0; round < 8; round++) {
 		let content = "";
 		const got: Array<{ id: string; name: string; args: string }> = [];
-		const stopped = await stream({ messages, tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true, id_slot: 0, effort: "medium" }, (d) => {
+		const stopped = await stream({ messages, tools, temperature: 0.3, max_tokens: 6000, dry_multiplier: 0.8, cache_prompt: true, id_slot: 0, effort: "medium" }, (d) => {
 			timing(d);
 			const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 			if (!delta) return;
@@ -724,6 +829,7 @@ async function converse(job: Job): Promise<Outcome> {
 			// As in a real chat: the look stays as it is unless the request was about it.
 			else if (groupOf(c.name) === "style" && !tools.some((t) => t.function.name === c.name)) result = "The user didn't ask about the app's look, so leave it as it is.";
 			else if (WRITES.has(c.name)) {
+				if (c.name === "add_live_block") args = fixLiveBlock(args, (t) => ["breakfast", "dinner"].includes(t), FOLDERS);
 				const problem = practiceCheck(c.name, args);
 				if (problem) result = `Not added to the plan: ${problem}`;
 				else {
@@ -737,6 +843,7 @@ async function converse(job: Job): Promise<Outcome> {
 		}
 		if (!fresh) break;
 	}
+	out.seconds = (performance.now() - started) / 1000;
 	return out;
 }
 
@@ -804,10 +911,11 @@ export function progress(now = Date.now()) {
 }
 
 /** Runs every job on the model in use. */
-async function testModel(): Promise<TestRun> {
+async function testModel(jobs: Job[]): Promise<TestRun> {
 	perSecond = [];
+	readSpeeds = [];
 	const results: JobResult[] = [];
-	bench.of = JOBS.length;
+	bench.of = jobs.length;
 	bench.done = [];
 	bench.modelStarted = Date.now();
 	bench.current = "Loading the model…";
@@ -820,7 +928,7 @@ async function testModel(): Promise<TestRun> {
 		servedBy = await loadedModel().catch(() => "");
 	}
 	// A new order every run, so no test always gets a freshly woken engine (or a warm one).
-	const order = [...JOBS];
+	const order = [...jobs];
 	for (let i = order.length - 1; i > 0; i--) {
 		const j = Math.floor(Math.random() * (i + 1));
 		[order[i], order[j]] = [order[j], order[i]];
@@ -868,6 +976,8 @@ async function testModel(): Promise<TestRun> {
 		wordsPerSecond: perSecond.length ? perSecond.reduce((a, b) => a + b, 0) / perSecond.length : 0,
 		jobs: results,
 		servedBy,
+		setup: setupText(),
+		readsPerSecond: readSpeeds.length ? readSpeeds.reduce((a, b) => a + b, 0) / readSpeeds.length : 0,
 	};
 }
 
@@ -875,6 +985,7 @@ async function testModel(): Promise<TestRun> {
 export async function runTest(models: string[] = [ai.model]) {
 	if (bench.running) return;
 	const before = ai.model;
+	const picks = pickJobs();
 	Object.assign(bench, { running: true, cancelled: false, error: "", models: models.length, modelIndex: 0, started: Date.now(), modelSeconds: [], done: [], current: "" });
 	try {
 		for (const [i, model] of models.entries()) {
@@ -882,7 +993,7 @@ export async function runTest(models: string[] = [ai.model]) {
 			bench.modelIndex = i + 1;
 			bench.model = model;
 			if (inDesktopApp && ai.model !== model) await useModel(model);
-			const run = await testModel();
+			const run = await testModel(picks);
 			// A run cut short isn't a fair score.
 			if (!bench.cancelled) keep(run);
 		}
