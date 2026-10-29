@@ -24,6 +24,7 @@
 	import WritingPage from "./settings/WritingPage.svelte";
 	import SnippetsPage from "./settings/SnippetsPage.svelte";
 	import GalleryPage from "./settings/GalleryPage.svelte";
+	import AboutPage from "./settings/AboutPage.svelte";
 
 	interface Props {
 		ms: number;
@@ -43,6 +44,7 @@
 		{ id: "writing", label: "Writing", ico: "pencil", title: "Writing", about: "Helpers for when you're writing.", page: WritingPage },
 		{ id: "gallery", label: "Gallery", ico: "globe", title: "Gallery", about: "Themes, snippets and dashboards shared by people who use Basalt. One click adds one.", page: GalleryPage },
 		{ id: "snippets", label: "Snippets", ico: "code", title: "CSS snippets", about: "Your own styles, on top of everything else. For tinkerers.", page: SnippetsPage },
+		{ id: "about", label: "About & updates", ico: "download", title: "About Basalt", about: "Which version you have, and getting the newest one.", page: AboutPage },
 	];
 
 	let page = $state(lastPage);

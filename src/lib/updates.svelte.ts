@@ -10,7 +10,15 @@ export const DOWNLOAD_URL = `https://github.com/${REPO}/releases/latest/download
 const SKIP_KEY = "basalt.skip-update";
 const HOURS = 6;
 
-export const updates = $state<{ version: string | null; current: string; checking: boolean; reached: boolean; installing: { done: number; total: number } | null; error: string }>({ version: null, current: "", checking: false, reached: false, installing: null, error: "" });
+export const updates = $state<{ version: string | null; current: string; checking: boolean; reached: boolean; installing: { done: number; total: number } | null; error: string; message: string }>({ version: null, current: "", checking: false, reached: false, installing: null, error: "", message: "" });
+
+let messageTimer: ReturnType<typeof setTimeout> | undefined;
+/** A short note in the corner (like "You have the newest Basalt"), gone after a few seconds. */
+export function say(message: string) {
+	clearTimeout(messageTimer);
+	updates.message = message;
+	messageTimer = setTimeout(() => (updates.message = ""), 7000);
+}
 
 /** "0.10.1" is newer than "0.9.3". */
 function newer(a: string, b: string) {

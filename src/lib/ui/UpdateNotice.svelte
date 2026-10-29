@@ -24,6 +24,12 @@
 			<button class="later" onclick={laterUpdate} title="Remind me about the next one">Later</button>
 		{/if}
 	</div>
+{:else if updates.message}
+	<div class="notice" transition:fly={{ y: 16, duration: ms, easing: cubicOut }} role="status">
+		<span class="ico">{@html icon(updates.checking ? "download" : "check", 16)}</span>
+		<span class="words"><b>{updates.message}</b></span>
+		<button class="later" onclick={() => (updates.message = "")}>OK</button>
+	</div>
 {/if}
 
 <style>

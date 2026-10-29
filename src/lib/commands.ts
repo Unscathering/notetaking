@@ -3,7 +3,7 @@
 import type { IconName } from "./ui/icons";
 import { ws } from "./workspace.svelte";
 import { writing } from "./writing.svelte";
-import { checkForUpdate, updates } from "./updates.svelte";
+import { checkForUpdate, say, updates } from "./updates.svelte";
 import { inDesktopApp } from "./cave";
 import { aiPanel } from "./ai/panel.svelte";
 import { helpHooks } from "./ai/writer";
@@ -101,9 +101,11 @@ export const COMMANDS: Command[] = [
 		label: "Check for updates",
 		icon: "download",
 		run: async () => {
-			if (!inDesktopApp) return alert("Updates are for the desktop app.");
+			if (!inDesktopApp) return say("Updates are for the desktop app.");
+			say("Checking for updates…");
 			await checkForUpdate(false);
-			if (!updates.version) alert(updates.reached ? `You have the newest Basalt (${updates.current}).` : "Couldn't reach GitHub to check. Try again later.");
+			if (updates.version) say("");
+			else say(updates.reached ? `You have the newest Basalt (${updates.current}).` : `Couldn't reach GitHub to check. Try again later.${updates.current ? ` You have Basalt ${updates.current}.` : ""}`);
 		},
 	},
 	{ id: "palette", label: "Command palette", icon: "command", keys: "Ctrl+P", run: () => (ws.modal = ws.modal === "palette" ? null : "palette") },
