@@ -14,6 +14,7 @@
 	import CalendarView from "./lib/ui/CalendarView.svelte";
 	import DatabaseView from "./lib/ui/DatabaseView.svelte";
 	import SplitPane from "./lib/ui/SplitPane.svelte";
+	import FocusTimer from "./lib/ui/FocusTimer.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -188,6 +189,7 @@
 			<button class="focus-exit" onclick={() => (writing.focus = false)} title="Leave focus mode (Esc)">{@html icon("focus", 15)}</button>
 		{/if}
 		<footer class="status">
+			<FocusTimer {ms} />
 			<span>{words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>

@@ -96,6 +96,11 @@ check again before a public launch.
 - `src/lib/export.ts`: notes to HTML (with `marked`, loaded only then):
   PDF through the print window, one self-contained web page, or a folder as
   a website (desktop app; pages, links between them, pictures, an index).
+- Habits (`src/lib/habits.ts`): the checklist in a note called "Habits",
+  copied into daily notes by `{{habits}}`; `list: habits` blocks draw the
+  tracker. The focus timer is `src/lib/focus.svelte.ts` and
+  `ui/FocusTimer.svelte` (in the bottom bar); finished sessions are logged
+  in today's note. `ensureDay` in `templates.ts` finds or makes a day's note.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

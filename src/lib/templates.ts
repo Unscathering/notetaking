@@ -9,6 +9,7 @@
 // the "Daily note" template the first time it's opened that day.
 import { joinPath, noteTitle } from "./cave";
 import { ws } from "./workspace.svelte";
+import { habitLines } from "./habits";
 
 export const TEMPLATE_FOLDER = "Templates";
 export const DAILY_FOLDER = "Daily";
@@ -19,6 +20,7 @@ export const BUILT_IN: Record<string, string> = {
 ## Plan for today
 - [ ]
 
+{{habits}}
 ## Notes
 
 
@@ -117,6 +119,12 @@ show: cards
 \`\`\`
 
 \`\`\`basalt
+title: Habits
+list: habits
+days: 21
+\`\`\`
+
+\`\`\`basalt
 title: Tags
 list: tags
 limit: 12
@@ -147,6 +155,11 @@ export function fill(text: string, title: string, now = new Date()): string {
 		title,
 		yesterday: dateName(shift(now, -1)),
 		tomorrow: dateName(shift(now, 1)),
+		// The checklist from the "Habits" note, under its own heading (nothing if there's no such note).
+		habits: (() => {
+			const lines = habitLines(ws.texts);
+			return lines ? `## Habits\n${lines}\n` : "";
+		})(),
 	};
 	return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (all, key: string) => values[key.toLowerCase()] ?? all);
 }
@@ -189,15 +202,25 @@ export async function makeTemplateFolder() {
 /** Opens today's note (or one `offset` days away), making it first if needed. */
 export const today = (offset = 0) => openDay(shift(new Date(), offset));
 
-/** Opens a day's note, making it from the daily template first if needed. */
-export async function openDay(day: Date) {
-	if (!ws.cave) return;
-	const path = joinPath(DAILY_FOLDER, `${dateName(day)}.md`);
+/** A day's note: the one named after the date wherever it is, or a new one made from the daily template. */
+export async function ensureDay(day: Date): Promise<string | null> {
+	if (!ws.cave) return null;
+	const name = dateName(day);
+	const existing = ws.files.find((f) => noteTitle(f) === name && !f.startsWith(`${TEMPLATE_FOLDER}/`));
+	if (existing) return existing;
+	const path = joinPath(DAILY_FOLDER, `${name}.md`);
 	if (!(await ws.cave.exists(path))) {
 		const t = templates().find((x) => x.name === "Daily note")!;
-		await ws.cave.write(path, fill(t.path ? await ws.cave.read(t.path) : t.text(), dateName(day), day));
+		await ws.cave.write(path, fill(t.path ? await ws.cave.read(t.path) : t.text(), name, day));
 		await ws.refresh();
 	}
-	ws.openFolders.add(DAILY_FOLDER);
+	return path;
+}
+
+/** Opens a day's note, making it from the daily template first if needed. */
+export async function openDay(day: Date) {
+	const path = await ensureDay(day);
+	if (!path) return;
+	for (let f = path.slice(0, path.lastIndexOf("/")); f; f = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "") ws.openFolders.add(f);
 	await ws.open(path);
 }

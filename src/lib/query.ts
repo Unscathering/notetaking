@@ -2,7 +2,8 @@
 // tasks, tags or backlinks, as a list, cards, a table or a count. They're how
 // dashboards are made. A block is plain `key: value` lines:
 //
-//   list: notes | tasks | tags | backlinks     (what to list; notes if left out)
+//   list: notes | tasks | tags | backlinks | habits  (what to list; notes if left out)
+//   days: 28                                   (habits: how many days back)
 //   from: Projects, Writing                    (only inside these folders)
 //   tag: idea                                  (only with this tag)
 //   where: status = active                     (a property's value; also !=, >, <, has status)
@@ -21,7 +22,7 @@ import { linksIn, tagsIn } from "./graph";
 import { readProps } from "./notes";
 
 export interface Spec {
-	list: "notes" | "tasks" | "tags" | "backlinks";
+	list: "notes" | "tasks" | "tags" | "backlinks" | "habits";
 	show: "list" | "cards" | "table" | "count";
 	from: string[];
 	tag: string;
@@ -32,6 +33,8 @@ export interface Spec {
 	to: string;
 	sort: string;
 	limit: number;
+	/** Habits: how many days back. */
+	days: number;
 	columns: string[];
 	title: string;
 	/** Lines it didn't understand, to point out. */
@@ -39,7 +42,7 @@ export interface Spec {
 }
 
 export function parseSpec(source: string): Spec {
-	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, columns: [], title: "", unknown: [] };
+	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, days: 28, columns: [], title: "", unknown: [] };
 	for (const raw of source.split("\n")) {
 		const line = raw.replace(/\s+#.*$/, "").trim();
 		if (!line) continue;
@@ -52,7 +55,7 @@ export function parseSpec(source: string): Spec {
 		const v = value.trim();
 		switch (key.toLowerCase()) {
 			case "list":
-				if (["notes", "tasks", "tags", "backlinks"].includes(v)) spec.list = v as Spec["list"];
+				if (["notes", "tasks", "tags", "backlinks", "habits"].includes(v)) spec.list = v as Spec["list"];
 				else spec.unknown.push(line);
 				break;
 			case "show":
@@ -89,6 +92,9 @@ export function parseSpec(source: string): Spec {
 				break;
 			case "limit":
 				spec.limit = Math.max(1, Math.min(500, parseInt(v) || 50));
+				break;
+			case "days":
+				spec.days = Math.max(7, Math.min(120, parseInt(v) || 28));
 				break;
 			case "columns":
 				spec.columns = v.split(",").map((c) => c.trim()).filter(Boolean);
@@ -156,6 +162,7 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 export function runQuery(spec: Spec, texts: Map<string, string>, resolve: (t: string) => string | null, here: string): Row[] {
 	const notes = [...texts.keys()].filter((p) => p !== here && !p.startsWith("Templates/") && inFolders(p, spec.from));
 	let rows: Row[] = [];
+	if (spec.list === "habits") return rows; // Drawn as a tracker (editor/liveBlocks.ts).
 	if (spec.list === "tags") {
 		const counts = new Map<string, number>();
 		for (const p of notes) for (const t of tagsIn(texts.get(p) ?? "")) counts.set(t, (counts.get(t) ?? 0) + 1);

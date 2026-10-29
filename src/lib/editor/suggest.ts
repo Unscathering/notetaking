@@ -40,6 +40,7 @@ const BLOCKS: Array<{ label: string; detail: string; text: string; keywords?: st
 	{ label: "Live cards", detail: "basalt", text: "```basalt\nfrom: |\nshow: cards\n```", keywords: "query dataview dashboard gallery" },
 	{ label: "Live table", detail: "basalt", text: "```basalt\nfrom: |\nshow: table\ncolumns: status\n```", keywords: "query dataview dashboard database" },
 	{ label: "Open tasks", detail: "basalt", text: "```basalt\nlist: tasks|\n```", keywords: "query todo dashboard checklist" },
+	{ label: "Habit tracker", detail: "basalt", text: "```basalt\nlist: habits\ndays: 28|\n```", keywords: "habits streak tracker routine" },
 	{ label: "Links to this note", detail: "basalt", text: "```basalt\nlist: backlinks|\n```", keywords: "backlinks query" },
 	{ label: "Today's date", detail: "", text: "", keywords: "date now" },
 ];

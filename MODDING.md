@@ -76,7 +76,7 @@ sort: name
 
 | Key | Values |
 | --- | --- |
-| `list` | `notes` (the default), `tasks`, `tags`, `backlinks` |
+| `list` | `notes` (the default), `tasks`, `tags`, `backlinks`, `habits` |
 | `show` | `list` (the default), `cards`, `table`, `count` |
 | `from` | Folders, separated by commas |
 | `tag` | Only notes with this tag |
@@ -88,11 +88,21 @@ sort: name
 | `sort` | `name`, `due`, `folder` or any property; put `-` in front to reverse |
 | `limit` | How many (50 if left out) |
 | `columns` | Table columns: properties, or `folder`, `due`, `tags`, `note` |
+| `days` | Habits: how many days back (28 if left out) |
 | `title` | A heading above it |
 
 Tasks are checklist items. They count as due on a day when they say
 `due:2026-11-02`, `📅 2026-11-02` or `@2026-11-02`; board cards with a due date
 count too. Ticking a task in a live block ticks it in its note.
+
+## Habits
+
+Write your habits as a checklist in a note called **Habits**. New daily
+notes copy them in under a "Habits" heading (the `{{habits}}` placeholder in
+the daily template); tick them off there. A block with `list: habits` draws
+them as a tracker with streaks; click a square to tick that day. Style it
+with `.basalt-habits`, `.basalt-habit-cell` (`.is-done`, `.is-today`) and
+`.basalt-habit-streak`.
 
 ## Embeds
 
@@ -103,7 +113,8 @@ shows just that section.
 
 Notes in the cave's `Templates` folder are templates (**New note from a
 template**, Ctrl+Shift+N). These fill in when a note is made: `{{date}}`,
-`{{time}}`, `{{weekday}}`, `{{title}}`, `{{yesterday}}`, `{{tomorrow}}`. A
+`{{time}}`, `{{weekday}}`, `{{title}}`, `{{yesterday}}`, `{{tomorrow}}`,
+`{{habits}}`. A
 template named like a built-in one ("Daily note", "Dashboard") replaces it.
 
 ## Themes

@@ -13,6 +13,7 @@ import { StateEffect, StateField, type EditorState, type Range } from "@codemirr
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { markdown } from "../ai/markdown";
 import type { Row, Spec } from "../query";
+import { streak, type HabitDay } from "../habits";
 
 export interface LiveHooks {
 	/** Runs a ```basalt block. */
@@ -22,6 +23,10 @@ export interface LiveHooks {
 	open(path: string): void;
 	toggleTask(path: string, line: number): void;
 	folderColor(folder: string): string | undefined;
+	/** The habit tracker's data: habits and the last `days` days. */
+	habits(days: number): { list: string[]; days: HabitDay[] };
+	/** Opens (making it if needed) the daily note for a date. */
+	openDay(date: string): void;
 }
 
 /** Sent when notes change, so live parts redraw. */
@@ -65,6 +70,7 @@ class QueryWidget extends WidgetType {
 		const box = el("div", `basalt-block basalt-show-${spec.show} basalt-list-${spec.list}`);
 		if (spec.title) box.append(el("div", "basalt-title", spec.title));
 		if (spec.unknown.length) box.append(el("div", "basalt-warn", `Didn't understand: ${spec.unknown.join("; ")}`));
+		if (spec.list === "habits") return this.tracker(box, spec);
 		if (spec.show === "count") {
 			box.append(el("div", "basalt-count", String(rows.length)), el("div", "basalt-count-label", spec.title ? "" : spec.list));
 			return box;
@@ -116,6 +122,45 @@ class QueryWidget extends WidgetType {
 			list.append(li);
 		}
 		box.append(list);
+		return box;
+	}
+
+	/** Habits down the side, days across; a filled square is a day it was done. */
+	private tracker(box: HTMLElement, spec: Spec) {
+		const { list, days } = this.hooks.habits(spec.days);
+		// Habits from the Habits note, plus any written in daily notes but not listed.
+		const names = [...new Set([...list, ...days.flatMap((d) => [...d.lines.keys()])])];
+		if (!names.length) {
+			box.append(el("div", "basalt-empty", "No habits yet. Make a note called “Habits” with a checklist of them; new daily notes will include it."));
+			return box;
+		}
+		const grid = el("div", "basalt-habits");
+		grid.style.setProperty("--days", String(days.length));
+		grid.append(el("span", "basalt-habit-name"));
+		for (const d of days) {
+			const day = new Date(`${d.date}T12:00:00`);
+			const head = el("span", "basalt-habit-day", day.getDate() === 1 || d === days[0] ? day.toLocaleDateString(undefined, { month: "short" }) : "");
+			head.title = d.date;
+			grid.append(head);
+		}
+		grid.append(el("span", "basalt-habit-streak", "Streak"));
+		for (const name of names) {
+			grid.append(el("span", "basalt-habit-name", name));
+			for (const d of days) {
+				const on = d.done.has(name);
+				const cell = el("button", `basalt-habit-cell${on ? " is-done" : ""}${d === days.at(-1) ? " is-today" : ""}`);
+				cell.title = `${name} · ${d.date}${on ? " · done" : d.path ? "" : " · no daily note"}`;
+				link(cell, () => {
+					const line = d.lines.get(name);
+					if (d.path && line != null) this.hooks.toggleTask(d.path, line);
+					else this.hooks.openDay(d.date);
+				});
+				grid.append(cell);
+			}
+			const n = streak(days, name);
+			grid.append(el("span", "basalt-habit-streak", n ? `${n}🔥` : "–"));
+		}
+		box.append(grid);
 		return box;
 	}
 
@@ -249,6 +294,14 @@ const look = EditorView.theme({
 	".basalt-table th": { color: "var(--muted)", fontWeight: "600", fontSize: "0.85em", textTransform: "uppercase", letterSpacing: "0.04em" },
 	".basalt-count": { color: "var(--heading)", fontSize: "2.4em", fontWeight: "700", lineHeight: "1.1" },
 	".basalt-count-label": { color: "var(--muted)", textTransform: "capitalize" },
+	".basalt-habits": { display: "grid", gridTemplateColumns: "minmax(90px, max-content) repeat(var(--days), minmax(10px, 1fr)) auto", gap: "3px", alignItems: "center", overflowX: "auto" },
+	".basalt-habit-name": { paddingRight: "8px", whiteSpace: "nowrap", color: "var(--text)" },
+	".basalt-habit-day": { color: "var(--muted)", fontSize: "0.75em", whiteSpace: "nowrap", overflow: "visible" },
+	".basalt-habit-cell": { aspectRatio: "1", minWidth: "10px", padding: "0", border: "0", borderRadius: "3px", background: "var(--hover)", cursor: "pointer", transition: "background-color var(--dur) var(--ease), transform var(--dur) var(--ease)" },
+	".basalt-habit-cell:hover": { transform: "scale(1.15)" },
+	".basalt-habit-cell.is-done": { background: "var(--accent)" },
+	".basalt-habit-cell.is-today": { outline: "1.5px solid color-mix(in srgb, var(--accent) 60%, transparent)", outlineOffset: "1px" },
+	".basalt-habit-streak": { paddingLeft: "8px", color: "var(--muted)", fontSize: "0.85em", whiteSpace: "nowrap" },
 	".basalt-embed": { padding: "10px 16px", borderLeft: "3px solid var(--accent)", borderRadius: "0 var(--radius) var(--radius) 0", background: "color-mix(in srgb, var(--raised) 50%, transparent)" },
 	".basalt-embed-head": { marginBottom: "4px", fontSize: "0.85em" },
 	".basalt-embed-body h1, .basalt-embed-body h2, .basalt-embed-body h3": { margin: "6px 0 4px", color: "var(--heading)", fontSize: "1.1em" },

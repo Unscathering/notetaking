@@ -3,6 +3,8 @@ import type { LiveHooks } from "./editor/liveBlocks";
 import { frontmatterRange } from "./notes";
 import { parseSpec, runQuery } from "./query";
 import { ws } from "./workspace.svelte";
+import { habitDays, habitList } from "./habits";
+import { openDay } from "./templates";
 
 /** The part of a note under one heading, down to the next heading as big or bigger. */
 function section(text: string, heading: string): string | null {
@@ -41,5 +43,7 @@ export function liveHooksFor(here: string): LiveHooks {
 			await ws.writeNote(path, lines.join("\n"));
 		},
 		folderColor: (folder) => ws.meta.looks[folder]?.color,
+		habits: (days) => ({ list: habitList(ws.texts), days: habitDays(ws.texts, days) }),
+		openDay: (date) => void openDay(new Date(`${date}T12:00:00`)),
 	};
 }
