@@ -17,7 +17,7 @@ import {
 import { readProps, type NoteProps } from "./notes";
 import { newBoardText } from "./board";
 
-export type Panel = "files" | "search" | "tags";
+export type Panel = "files" | "search" | "tags" | "outline";
 /** Tabs that aren't notes: the graph and other whole-cave views. */
 export const VIEWS: Record<string, { label: string; icon: IconName }> = {
 	"basalt:graph": { label: "Graph", icon: "graph" },
@@ -40,6 +40,8 @@ class Workspace {
 	note = $derived(this.active && !isView(this.active) ? this.active : null);
 	/** The last note that was in front, even if a view is showing now. */
 	recent: string | null = $state(null);
+	/** The line the cursor is on in the note in front (0-based), for the outline. */
+	cursorLine = $state(0);
 	/** The note whose history is showing. */
 	historyOf: string | null = $state(null);
 

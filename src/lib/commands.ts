@@ -42,6 +42,7 @@ export const COMMANDS: Command[] = [
 	{ id: "home", label: "Go home", icon: "home", keys: "Ctrl+H", run: () => ws.goHome() },
 	{ id: "files", label: "Show files", icon: "files", keys: "Ctrl+Shift+E", run: () => showPanel("files") },
 	{ id: "search", label: "Search all notes", icon: "search", keys: "Ctrl+Shift+F", run: () => showPanel("search") },
+	{ id: "outline", label: "Outline of this note", icon: "list", run: () => showPanel("outline") },
 	{ id: "tags", label: "Browse tags", icon: "tag", keys: "Ctrl+Shift+T", run: () => showPanel("tags") },
 	{ id: "switcher", label: "Open a note", icon: "file", keys: "Ctrl+O", run: () => (ws.modal = "switcher") },
 	{ id: "ai", label: "Ask the AI", icon: "sparkles", keys: "Ctrl+J", run: () => (aiPanel.open = !aiPanel.open) },

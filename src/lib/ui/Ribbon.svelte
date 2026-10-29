@@ -5,11 +5,11 @@
 	import { aiPanel } from "../ai/panel.svelte";
 	import { icon } from "./icons";
 
-	const top = ["home", "files", "search", "tags", "graph", "calendar", "ai", "today", "new-note", "new-board", "palette"].map(command);
+	const top = ["home", "files", "search", "tags", "outline", "graph", "calendar", "ai", "today", "new-note", "new-board", "palette"].map(command);
 	const bottom = ["backups", "caves", "appearance"].map(command);
 
 	const isOn = (id: string) =>
-		(id === "files" || id === "search" || id === "tags") && ws.sidebarOpen && ws.panel === id
+		(id === "files" || id === "search" || id === "tags" || id === "outline") && ws.sidebarOpen && ws.panel === id
 			? true
 			: (id === "ai" && aiPanel.open) || (id === "appearance" && ws.modal === "settings") || (id === "graph" && ws.active === "basalt:graph") || (id === "calendar" && ws.active === "basalt:calendar") || (id === "caves" && ws.modal === "caves") || (id === "backups" && ws.modal === "backups") || (id === "palette" && ws.modal === "palette");
 </script>

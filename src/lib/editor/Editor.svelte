@@ -45,6 +45,7 @@
 				imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
 				...helpHooks,
 				live: liveHooksFor(p),
+				onCursor: (line) => (ws.cursorLine = line),
 			}),
 		});
 	}

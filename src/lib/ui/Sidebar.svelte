@@ -5,6 +5,7 @@
 	import FileTree from "./FileTree.svelte";
 	import SearchPanel from "./SearchPanel.svelte";
 	import TagsPanel from "./TagsPanel.svelte";
+	import OutlinePanel from "./OutlinePanel.svelte";
 	import { icon } from "./icons";
 
 	let { ms }: { ms: number } = $props();
@@ -34,6 +35,8 @@
 		</nav>
 	{:else if ws.panel === "search"}
 		<SearchPanel {ms} />
+	{:else if ws.panel === "outline"}
+		<OutlinePanel {ms} />
 	{:else}
 		<TagsPanel {ms} />
 	{/if}

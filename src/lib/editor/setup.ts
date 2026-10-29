@@ -141,6 +141,8 @@ export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks, Wr
 	onChange(text: string): void;
 	openLink(target: string): void;
 	live: LiveHooks;
+	/** The line the cursor moved to (0-based). */
+	onCursor?(line: number): void;
 }
 
 export function editorExtensions(hooks: EditorHooks): Extension[] {
@@ -172,6 +174,7 @@ export function editorExtensions(hooks: EditorHooks): Extension[] {
 		keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
 		EditorView.updateListener.of((u) => {
 			if (u.docChanged) hooks.onChange(u.state.doc.toString());
+			if (u.selectionSet || u.docChanged) hooks.onCursor?.(u.state.doc.lineAt(u.state.selection.main.head).number - 1);
 		}),
 	];
 }
