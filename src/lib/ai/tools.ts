@@ -31,7 +31,12 @@ export interface Change {
 
 type Args = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v));
-const folderPath = (v: unknown) => str(v).replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+const folderPath = (v: unknown) => {
+	const p = str(v).replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+	// Small models sometimes start a path with the cave's own name ("My cave/School").
+	const cave = ws.cave?.name;
+	return cave && p.toLowerCase().startsWith(`${cave.toLowerCase()}/`) && !ws.folders.includes(p.split("/")[0]) ? p.slice(cave.length + 1) : p;
+};
 const notePath = (v: unknown) => {
 	const p = folderPath(v);
 	return p && !/\.md$/i.test(p) ? `${p}.md` : p;
@@ -103,7 +108,7 @@ export const TOOLS = [
 	),
 	fn(
 		"create_dashboard",
-		"Propose a dashboard: Basalt writes the live lists for you. With a note that exists, it becomes a dashboard (the lists go at its end); otherwise a new note is made. Use this instead of writing ```basalt blocks yourself.",
+		"Propose a dashboard: Basalt writes the live lists for you. To turn a note the user has into a dashboard, give that note's own name as path (like 'Cell notes'): the lists are added to the end of it. A path that doesn't exist makes a new dashboard note. Use this instead of writing ```basalt blocks yourself.",
 		{
 			path: s("The note, like 'School/School dashboard'."),
 			folder: s("Optional: only show what's in this folder."),
@@ -119,8 +124,8 @@ export const TOOLS = [
 			title: s("A heading above it."),
 			list: s("notes, tasks, tags, backlinks or habits."),
 			show: s("list, cards, table or count."),
-			from: s("Optional: folders, separated by commas."),
-			tag: s("Optional: only notes with this tag."),
+			from: s("Optional: only notes in these folders, separated by commas. Use this to list a folder, like 'Recipes'."),
+			tag: s("Optional: only notes with this #tag (not for folders)."),
 			where: s("Optional: a property test, like 'status = active'."),
 			due: s("Optional, for tasks: today, week, overdue or any."),
 			sort: s("Optional: name, due, folder or a property; '-' in front reverses."),
@@ -293,7 +298,8 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 		if (!p) return "Name the note to add it to.";
 		if (!exists(p)) return missing(p);
 		const spec = parseSpec(liveBlock(a));
-		return spec.unknown.length ? `These parts aren't right: ${spec.unknown.join("; ")}. Look up the keys with basalt_help.` : "";
+		if (spec.unknown.length) return `These parts aren't right: ${spec.unknown.join("; ")}. Look up the keys with basalt_help.`;
+		return tagProblem(spec.tag, ws.tags.has(spec.tag), ws.folders);
 	}
 	if (tool === "add_card") return !str(a.board) ? "Name the board." : exists(a.board) ? (str(a.title) ? "" : "Give the card a title.") : missing(a.board);
 	if (tool === "create_space") {
@@ -680,6 +686,17 @@ function liveBlock(a: Args): string {
 		.filter(([, v]) => v)
 		.map(([k, v]) => `${k}: ${v}`)
 		.join("\n");
+}
+
+/**
+ * A live list by a tag no note has would show nothing; usually the AI meant a
+ * folder ("tag: recipe" for the Recipes folder). Shared with the model test.
+ */
+export function tagProblem(tag: string, used: boolean, folders: string[]): string {
+	if (!tag || used) return "";
+	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
+	const folder = folders.find((f) => stem(f.split("/").pop()!) === stem(tag));
+	return `No note has the tag #${tag}, so the list would be empty.${folder ? ` To list the notes in the ${folder} folder, use from: ${folder} instead of tag.` : ""}`;
 }
 
 /** A snippet's file name, without .css: lowercase words and dashes. */

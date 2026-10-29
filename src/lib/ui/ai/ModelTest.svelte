@@ -57,7 +57,7 @@
 			{/if}
 		</div>
 		{#if usingClaude()}<p class="hint">Turn off Claude above to test the models on this PC.</p>{/if}
-		<p class="hint small">Takes {minutes(JOB_COUNT * 0.15)} for a small model, longer for big ones. Only downloaded models are tested.</p>
+		<p class="hint small">Takes {minutes(JOB_COUNT * 0.05)} for a small model, longer for big ones. Only downloaded models are tested.</p>
 	{/if}
 	{#if bench.error}<p class="problem">{bench.error}</p>{/if}
 

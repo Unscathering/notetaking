@@ -7,7 +7,7 @@
 // that only exists here: looking around reads from it, and planned changes
 // are only scored, never carried out. The real instructions, tools and
 // request sorting are used, so the score reflects real use.
-import { TOOLS, WRITES, groupOf, look, toolsFor, type Group } from "./tools";
+import { TOOLS, WRITES, groupOf, look, tagProblem, toolsFor, type Group } from "./tools";
 import { foundNotes, instructions, sortRequest } from "./agent.svelte";
 import { ai, loadedModel, stop, stopAnswer, stream, useModel, wake } from "./engine.svelte";
 import { recall } from "./recall";
@@ -31,9 +31,10 @@ const NOTES: Record<string, string> = {
 	"Old draft.md": "# Old draft\n\nThe beginning of an essay about cities.\n",
 };
 const title = (p: string) => p.split("/").pop()!.replace(/\.md$/, "");
+/** Like Basalt's own lookup (ws.resolve): the full path, or else the note's name alone. */
 const findNote = (name: unknown) => {
 	const n = String(name ?? "").trim().replace(/\.md$/i, "").toLowerCase();
-	return Object.keys(NOTES).find((p) => p.replace(/\.md$/, "").toLowerCase() === n || title(p).toLowerCase() === n) ?? null;
+	return Object.keys(NOTES).find((p) => p.replace(/\.md$/, "").toLowerCase() === n) ?? Object.keys(NOTES).find((p) => title(p).toLowerCase() === n.split("/").pop()) ?? null;
 };
 const isFolder = (name: unknown) => FOLDERS.some((f) => f.toLowerCase() === String(name ?? "").trim().replace(/^\/|\/$/g, "").toLowerCase());
 
@@ -82,8 +83,12 @@ function practiceCheck(tool: string, a: Record<string, unknown>): string {
 		case "edit_note":
 		case "append_to_note":
 		case "set_home":
-		case "add_live_block":
 			return findNote(a.path) ? "" : needs(a.path);
+		case "add_live_block": {
+			if (!findNote(a.path)) return needs(a.path);
+			const tag = String(a.tag ?? "").replace(/^#/, "").toLowerCase();
+			return tagProblem(tag, ["breakfast", "dinner"].includes(tag), FOLDERS);
+		}
 	}
 	return "";
 }
@@ -359,6 +364,228 @@ const JOBS: Job[] = [
 			[o.text.trim().length > 20, "It didn't say anything back"],
 		]),
 	},
+
+	// ---- A second set: the same kinds of jobs, worded differently and about other notes ----
+	// (so instructions tuned on the first set can't just fit those exact questions)
+	{
+		id: "areas2",
+		area: "organize",
+		ask: "I want my notes split into Music, Cooking and Travel, each with a dashboard, plus a start page linking all three.",
+		score: (o) => {
+			const spaces = calls(o, "create_space").map((c) => lc(c.args.name));
+			const home = calls(o, "create_home");
+			return tally([
+				...["music", "cooking", "travel"].map((n): [boolean, string] => [spaces.includes(n), `No area with a dashboard for ${n}`]),
+				[home.length === 1, home.length ? "More than one start page" : "No start page"],
+				[!o.plan.some((c) => c.name === "create_note" && /dashboard|home|start/i.test(String(c.args.path))), "It wrote a dashboard by hand instead of letting Basalt make it"],
+				...noSurprises(o, []),
+			]);
+		},
+	},
+	{
+		id: "move2",
+		area: "organize",
+		ask: "Put my Groceries list in a new folder named Shopping.",
+		score: (o) => {
+			const move = calls(o, "move_item").find((c) => named(c.args.path, "groceries"));
+			return tally([
+				[!!move, "It didn't move Groceries"],
+				[!!move && lc(move.args.to_folder) === "shopping", "It moved it somewhere other than Shopping"],
+				...noSurprises(o, []),
+			]);
+		},
+	},
+	{
+		id: "rename2",
+		area: "organize",
+		ask: "Change the name of 'Ideas for the shop' to 'Shop ideas'.",
+		score: (o) => {
+			const r = calls(o, "rename_item").find((c) => named(c.args.path, "ideas for the shop"));
+			return tally([
+				[!!r, "It didn't rename Ideas for the shop"],
+				[!!r && lc(r.args.new_name).replace(/\.md$/, "") === "shop ideas", "The new name isn't 'Shop ideas'"],
+				[o.plan.length === 1, "It planned more than the rename"],
+			]);
+		},
+	},
+	{
+		id: "folder2",
+		area: "organize",
+		ask: "Create a green folder called Garden with a leaf icon.",
+		score: (o) => {
+			const f = calls(o, "create_folder").find((c) => named(c.args.path, "garden")) ?? calls(o, "create_space").find((c) => named(c.args.name, "garden"));
+			return tally([
+				[!!f, "No Garden folder"],
+				[!!f && lc(f.args.color).includes("green"), "It isn't green"],
+				[!!f && /leaf|🌿|🍃/.test(lc(f.args.icon)), "No leaf icon"],
+				...noSurprises(o, []),
+			]);
+		},
+	},
+	{
+		id: "project2",
+		area: "organize",
+		ask: "New project: Kitchen remodel. First steps are measure the room, pick tiles and hire a plumber.",
+		score: (o) => {
+			const p = calls(o, "create_project")[0];
+			const steps = Array.isArray(p?.args.steps) ? (p.args.steps as unknown[]).length : 0;
+			return tally([
+				[!!p, "It didn't use create_project"],
+				[!!p && lc(p.args.name).includes("kitchen"), "The project isn't called Kitchen remodel"],
+				[steps >= 3, "Not all three steps are in it"],
+				...noSurprises(o, []),
+			]);
+		},
+	},
+	{
+		id: "board2",
+		area: "dashboards",
+		ask: "Set up a homework board in School with the lists Backlog, This week and Done, and a card 'Read chapter 3' in Backlog.",
+		score: (o) => {
+			const b = calls(o, "create_board")[0];
+			const lists = (Array.isArray(b?.args.lists) ? b.args.lists : []) as Array<{ name?: string; cards?: Array<{ title?: string }> }>;
+			const backlog = lists.find((l) => lc(l.name) === "backlog");
+			const card = !!backlog?.cards?.some((c) => /read chapter 3/i.test(String(c.title))) || calls(o, "add_card").some((c) => /read chapter 3/i.test(String(c.args.title)));
+			return tally([
+				[!!b, "No board"],
+				[!!b && lc(b.args.path).startsWith("school/"), "The board isn't in School"],
+				[["backlog", "this week", "done"].every((n) => lists.some((l) => lc(l.name) === n)), "The lists aren't Backlog, This week and Done"],
+				[card, "'Read chapter 3' isn't in Backlog"],
+			]);
+		},
+	},
+	{
+		id: "dashboard2",
+		area: "dashboards",
+		ask: "Make my Math homework note into a dashboard showing overdue tasks and my tags.",
+		score: (o) => {
+			const d = calls(o, "create_dashboard").find((c) => named(c.args.path, "math homework"));
+			const any = d ?? calls(o, "create_dashboard")[0];
+			const sections = (Array.isArray(any?.args.sections) ? any.args.sections : []).map(lc);
+			const blocks = calls(o, "add_live_block").filter((c) => named(c.args.path, "math homework"));
+			return tally([
+				[!!d || blocks.length > 0, any ? "It made a new dashboard note instead of turning Math homework into one" : "It didn't make Math homework a dashboard"],
+				[sections.includes("overdue") || blocks.some((c) => lc(c.args.due) === "overdue"), "No overdue list"],
+				[sections.includes("tags") || blocks.some((c) => lc(c.args.list) === "tags"), "No tags list"],
+				[!o.plan.some((c) => c.name === "edit_note" && named(c.args.path, "math homework")), "It rewrote the note instead of adding to it"],
+			]);
+		},
+	},
+	{
+		id: "live2",
+		area: "dashboards",
+		ask: "In my Ideas note, add a live table of the notes in my Work folder.",
+		score: (o) => {
+			const b = calls(o, "add_live_block").find((c) => named(c.args.path, "ideas"));
+			const lines = b ? ["title", "list", "show", "from", "tag", "where", "due", "sort", "limit"].map((k) => (b.args[k] ? `${k}: ${String(b.args[k])}` : "")).filter(Boolean).join("\n") : "";
+			return tally([
+				[!!b, "No live list added to Ideas"],
+				[!!b && /work/i.test(String(b.args.from)), "It doesn't list the Work folder"],
+				[!!b && lc(b.args.show) === "table", "It isn't shown as a table"],
+				[!!b && !parseSpec(lines).unknown.length, "The live list has mistakes in it"],
+			]);
+		},
+	},
+	{
+		id: "template2",
+		area: "dashboards",
+		ask: "Use the Book notes template to start a note called 'Dune' in School.",
+		score: (o) => {
+			const t = calls(o, "note_from_template")[0];
+			return tally([
+				[!!t, "It didn't use the template"],
+				[!!t && lc(t.args.template) === "book notes", "It used a different template"],
+				[!!t && /^school\/dune(\.md)?$/.test(lc(t.args.path)), "The note isn't School/Dune"],
+			]);
+		},
+	},
+	{
+		id: "theme2",
+		area: "style",
+		ask: "Give Basalt the Paper theme, but with a green accent color.",
+		score: (o) => {
+			const c = calls(o, "change_appearance")[0];
+			return tally([
+				[!!c, "It didn't change the look"],
+				[!!c && lc(c.args.theme) === "paper", "It isn't the Paper theme"],
+				[!!c && /green|#[0-9a-f]{6}/.test(lc(c.args.accent)), "No green accent"],
+			]);
+		},
+	},
+	{
+		id: "snippet2",
+		area: "style",
+		ask: "Make a CSS snippet so notes marked as dashboards get a soft accent-colored border around their cards.",
+		score: (o) => {
+			const sn = calls(o, "create_snippet")[0];
+			const css = String(sn?.args.css ?? "");
+			return tally([
+				[!!sn, "No snippet"],
+				[/note-dashboard|\.dashboard/.test(css), "The CSS doesn't target dashboard notes"],
+				[/basalt-card|card/.test(css) && /border/.test(css), "No border on the cards"],
+				[/var\(--accent/.test(css), "It doesn't use the accent color variable"],
+				[css.split("{").length === css.split("}").length && css.includes("{"), "The CSS is broken"],
+			]);
+		},
+	},
+	{
+		id: "grammar4",
+		area: "writing",
+		ask: "Grammar: “their going to the park tomorrow, and there dog…”",
+		grammar: { text: "their going to the park tomorrow, and there dog is coming to.", right: ["They're going to the park tomorrow, and their dog is coming too."] },
+	},
+	{
+		id: "grammar5",
+		area: "writing",
+		ask: "Grammar: “she dont like when people is late…”",
+		grammar: { text: "she dont like when people is late to her partys.", right: ["She doesn't like when people are late to her parties.", "She doesn't like it when people are late to her parties."] },
+	},
+	{
+		id: "grammar6",
+		area: "writing",
+		ask: "Grammar: another sentence with nothing wrong",
+		grammar: { text: "We finished the report on Friday and sent it to the whole team.", right: ["We finished the report on Friday and sent it to the whole team."] },
+	},
+	{
+		id: "exam2",
+		area: "answers",
+		ask: "Which room is my biology exam in?",
+		score: (o) => tally([
+			[/\b204\b/.test(o.text), "It didn't give the right room (204)"],
+			[cites(o, "cell notes"), "It didn't say which note it came from"],
+			[!o.plan.length, "It planned changes for a question"],
+		]),
+	},
+	{
+		id: "decided2",
+		area: "answers",
+		ask: "Who is taking the photos for the new website?",
+		score: (o) => tally([
+			[/\bsam\b/i.test(o.text), "It didn't say Sam"],
+			[cites(o, "meeting with sam"), "It didn't say which note it came from"],
+			[!o.plan.length, "It planned changes for a question"],
+		]),
+	},
+	{
+		id: "delete2",
+		area: "care",
+		ask: "Remove the note called Old draft.",
+		score: (o) => tally([
+			[calls(o, "delete_item").some((c) => named(c.args.path, "old draft")), "It didn't delete Old draft"],
+			[o.plan.length === 1, "It planned more than deleting Old draft"],
+			[!/are you sure|should i|do you want me to/i.test(o.text), "It asked for confirmation in the chat (the plan already asks)"],
+		]),
+	},
+	{
+		id: "vague2",
+		area: "care",
+		ask: "My notes feel kind of messy lately.",
+		score: (o) => tally([
+			...noSurprises(o, []),
+			[!o.plan.some((c) => c.name === "edit_note"), "It rewrote notes nobody asked about"],
+			[o.text.trim().length > 20, "It didn't say anything back"],
+		]),
+	},
 ];
 
 export const JOB_COUNT = JOBS.length;
@@ -391,8 +618,8 @@ export interface TestRun {
 	servedBy?: string;
 }
 
-// "-2": scored with notes up front and sources counted, as in a real chat.
-const KEY = "basalt.ai-tests-2";
+// "-3": 36 tests (two sets), notes up front and sources counted, as in a real chat.
+const KEY = "basalt.ai-tests-3";
 /** Each job gets this long before it counts as failed. */
 const JOB_LIMIT_S = 240;
 
@@ -587,7 +814,13 @@ async function testModel(): Promise<TestRun> {
 		await wake();
 		servedBy = await loadedModel().catch(() => "");
 	}
-	for (const [i, job] of JOBS.entries()) {
+	// A new order every run, so no test always gets a freshly woken engine (or a warm one).
+	const order = [...JOBS];
+	for (let i = order.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[order[i], order[j]] = [order[j], order[i]];
+	}
+	for (const [i, job] of order.entries()) {
 		if (bench.cancelled) break;
 		bench.job = i + 1;
 		bench.current = job.ask;
@@ -614,6 +847,8 @@ async function testModel(): Promise<TestRun> {
 		bench.done = [...results];
 	}
 	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];
+	// Shown in the usual order, whatever order they ran in.
+	results.sort((x, y) => JOBS.findIndex((j) => j.id === x.id) - JOBS.findIndex((j) => j.id === y.id));
 	const byArea: Partial<Record<Area, number>> = {};
 	for (const a of Object.keys(AREAS) as Area[]) {
 		const r = results.filter((x) => x.area === a);
