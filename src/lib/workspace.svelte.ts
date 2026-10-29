@@ -73,12 +73,34 @@ class Workspace {
 		}
 	})());
 
+	/** Dashboards open in view mode; these are the ones switched to editing. */
+	editingDashboards = new SvelteSet<string>((() => {
+		try {
+			return JSON.parse(localStorage.getItem("basalt.editing-dashboards") ?? "[]") as string[];
+		} catch {
+			return [];
+		}
+	})());
+
+	/** Whether a note shows in view mode: chosen with Ctrl+E, or a dashboard nobody switched to editing. */
+	isViewing(path: string): boolean {
+		if (this.viewing.has(path)) return true;
+		return /(^|\n)cssclass(es)?:[^\n]*\bdashboard\b/.test((this.texts.get(path) ?? "").slice(0, 400)) && !this.editingDashboards.has(path);
+	}
+
 	/** Switches a note between view mode and editing. */
 	toggleView(path: string) {
-		if (this.viewing.has(path)) this.viewing.delete(path);
-		else this.viewing.add(path);
+		const dashboard = /(^|\n)cssclass(es)?:[^\n]*\bdashboard\b/.test((this.texts.get(path) ?? "").slice(0, 400));
+		if (this.isViewing(path)) {
+			this.viewing.delete(path);
+			if (dashboard) this.editingDashboards.add(path);
+		} else {
+			this.editingDashboards.delete(path);
+			if (!dashboard) this.viewing.add(path);
+		}
 		try {
 			localStorage.setItem("basalt.viewing", JSON.stringify([...this.viewing].slice(-500)));
+			localStorage.setItem("basalt.editing-dashboards", JSON.stringify([...this.editingDashboards].slice(-500)));
 		} catch {
 			// Fine; it's remembered until Basalt closes.
 		}

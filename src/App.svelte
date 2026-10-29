@@ -241,7 +241,7 @@
 			<FocusTimer {ms} />
 			<MicButton {ms} onText={dictate} />
 			{#if ws.note && !isView(ws.note)}
-				<button class="mode" class:on={ws.viewing.has(ws.note)} onclick={() => ws.note && ws.toggleView(ws.note)} title="Switch between viewing and editing (Ctrl+E)">{@html icon(ws.viewing.has(ws.note) ? "eye" : "pencil", 12)} {ws.viewing.has(ws.note) ? "Viewing" : "Editing"}</button>
+				<button class="mode" class:on={ws.isViewing(ws.note)} onclick={() => ws.note && ws.toggleView(ws.note)} title="Switch between viewing and editing (Ctrl+E)">{@html icon(ws.isViewing(ws.note) ? "eye" : "pencil", 12)} {ws.isViewing(ws.note) ? "Viewing" : "Editing"}</button>
 			{/if}
 			<span>{words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>

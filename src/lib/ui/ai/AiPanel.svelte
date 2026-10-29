@@ -3,7 +3,7 @@
 	// memory note and the model settings.
 	import { fade, fly } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
-	import { addModelFile, ai, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
+	import { addModelFile, ai, canSee, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
 	import { SvelteSet } from "svelte/reactivity";
 	import { THINKING, chat, deleteChat, loadChats, loadMemory, newChat, openChat, renameChat, saveMemory, send, setAccess, setProject, updateMemory, type ChatInfo } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
@@ -121,11 +121,51 @@
 		input.style.height = `${Math.min(160, input.scrollHeight)}px`;
 	}
 
+	/** Pictures waiting to be sent with the next message. */
+	let pictures = $state<Array<{ full: string; thumb: string }>>([]);
+	let pictureFile: HTMLInputElement | undefined = $state();
+	const blocked = $derived(pictures.length > 0 && !canSee());
+
+	/** A picture, shrunk so it's quick to send: at most `side` pixels across, as a JPEG. */
+	function shrink(file: Blob, side: number): Promise<string> {
+		return new Promise((done, fail) => {
+			const url = URL.createObjectURL(file);
+			const img = new Image();
+			img.onload = () => {
+				const scale = Math.min(1, side / Math.max(img.width, img.height));
+				const canvas = document.createElement("canvas");
+				canvas.width = Math.round(img.width * scale);
+				canvas.height = Math.round(img.height * scale);
+				canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+				URL.revokeObjectURL(url);
+				done(canvas.toDataURL("image/jpeg", 0.85));
+			};
+			img.onerror = () => fail(new Error("That file isn't a picture Basalt can read."));
+			img.src = url;
+		});
+	}
+
+	async function addPictures(files: Iterable<File>) {
+		for (const f of files) {
+			if (!f.type.startsWith("image/") || pictures.length >= 4) continue;
+			pictures = [...pictures, { full: await shrink(f, 1280), thumb: await shrink(f, 160) }];
+		}
+	}
+
+	function pastePictures(e: ClipboardEvent) {
+		const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+		if (!files.length) return;
+		e.preventDefault();
+		void addPictures(files);
+	}
+
 	async function submit(text = draft) {
-		if (!text.trim() || chat.busy) return;
+		if ((!text.trim() && !pictures.length) || chat.busy || blocked) return;
+		const sending = pictures;
 		draft = "";
+		pictures = [];
 		requestAnimationFrame(grow);
-		await send(text.trim());
+		await send(text.trim(), sending);
 	}
 
 	function keys(e: KeyboardEvent) {
@@ -293,7 +333,10 @@
 			{#each chat.messages as m (m.id)}
 				<div class="msg {m.role}" in:fly={{ y: 8, duration: ms, easing: cubicOut }}>
 					{#if m.role === "user"}
-						<div class="bubble">{m.text}</div>
+						<div class="said">
+							{#if m.images?.length}<div class="pics sent">{#each m.images as src, i (i)}<img {src} alt="" />{/each}</div>{/if}
+							{#if m.text}<div class="bubble">{m.text}</div>{/if}
+						</div>
 					{:else}
 						{#if m.steps.length}
 							<ul class="steps">
@@ -322,6 +365,9 @@
 								{#each m.sources as s (s)}<button onclick={() => ws.open(s)} title={s}>{@html icon("file", 11)}{s.split("/").pop()?.replace(/\.md$/i, "")}</button>{/each}
 							</div>
 						{/if}
+						{#if m.claimed && !m.streaming}
+							<p class="unsure">{@html icon("alert", 12)} It said it made changes, but it didn't change anything. Try asking again, more simply, or switch to a bigger model.</p>
+						{/if}
 						{#if m.unsure?.length && !m.streaming}
 							<p class="unsure">{@html icon("alert", 12)} Double-check {m.unsure.join(", ")}: {m.unsure.length === 1 ? "it isn't" : "they aren't"} in the notes this answer used.</p>
 						{/if}
@@ -346,13 +392,23 @@
 				</select>
 			</label>
 			</div>
-			<div class="box">
-				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys}></textarea>
+			{#if pictures.length}
+				<div class="pics waiting">
+					{#each pictures as p, i (i)}
+						<span class="pic"><img src={p.thumb} alt="" /><button title="Remove" onclick={() => (pictures = pictures.filter((_, j) => j !== i))}>{@html icon("x", 10)}</button></span>
+					{/each}
+				</div>
+				{#if blocked}<p class="blocked">{@html icon("alert", 11)} {modelName} can't see pictures. Use Sharp with its picture reader (AI models), or Claude.</p>{/if}
+			{/if}
+			<div class="box" role="group" ondragover={(e) => e.preventDefault()} ondrop={(e) => { if (e.dataTransfer?.files.length) { e.preventDefault(); void addPictures(e.dataTransfer.files); } }}>
+				<button class="attach" title="Add a picture (or paste or drop one)" onclick={() => pictureFile?.click()}>{@html icon("image", 15)}</button>
+				<input bind:this={pictureFile} type="file" accept="image/*" multiple hidden onchange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void addPictures(f); (e.target as HTMLInputElement).value = ""; }} />
+				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys} onpaste={pastePictures}></textarea>
 				<MicButton {ms} onText={(t) => { draft = draft ? `${draft.trimEnd()} ${t}` : t; requestAnimationFrame(grow); input?.focus(); }} />
 				{#if chat.busy}
 					<button class="send stop" onclick={stopAnswer} title="Stop">{@html icon("stop", 14)}</button>
 				{:else}
-					<button class="send" disabled={!draft.trim()} onclick={() => submit()} title="Send (Enter)">{@html icon("send", 16)}</button>
+					<button class="send" disabled={(!draft.trim() && !pictures.length) || blocked} onclick={() => submit()} title="Send (Enter)">{@html icon("send", 16)}</button>
 				{/if}
 			</div>
 			{#if online}<p class="foot">{@html icon("globe", 10)} Using Claude: messages and the notes it reads go to Anthropic.</p>{:else}<p class="foot">{@html icon("lock", 10)} Runs on this PC. Nothing leaves it.</p>{/if}
@@ -869,6 +925,78 @@
 		color: #e5a84b;
 		font-size: 11.5px;
 		line-height: 1.4;
+	}
+	.pics {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.said {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		max-width: 88%;
+	}
+	.said .bubble {
+		max-width: 100%;
+	}
+	.pics.sent {
+		justify-content: flex-end;
+		margin-bottom: 4px;
+	}
+	.pics img {
+		display: block;
+		max-width: 120px;
+		max-height: 90px;
+		border-radius: 8px;
+		object-fit: cover;
+	}
+	.pics.waiting {
+		margin: 0 0 6px 4px;
+	}
+	.pic {
+		position: relative;
+	}
+	.pic img {
+		width: 56px;
+		height: 56px;
+	}
+	.pic button {
+		position: absolute;
+		top: -5px;
+		right: -5px;
+		display: grid;
+		place-items: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: var(--raised);
+		color: var(--text);
+		cursor: pointer;
+	}
+	.blocked {
+		display: flex;
+		gap: 5px;
+		margin: 0 0 6px 4px;
+		color: #e5a84b;
+		font-size: 11.5px;
+	}
+	.attach {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 30px;
+		height: 32px;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.attach:hover {
+		color: var(--accent);
 	}
 	.composer {
 		padding: 10px 12px 8px;

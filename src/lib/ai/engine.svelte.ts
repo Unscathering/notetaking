@@ -9,6 +9,8 @@ export interface ModelFile {
 	file: string;
 	path: string;
 	sizeMb: number;
+	/** Its picture reader is there, so it can see pictures. */
+	vision?: boolean;
 }
 
 const KEY = "basalt.ai";
@@ -61,7 +63,7 @@ export async function refresh() {
 		return;
 	}
 	if (devUrl()) {
-		Object.assign(ai, { phase: "ready", engine: true, models: [{ file: "Test model", path: "", sizeMb: 0 }], model: "Test model", hardware: { vramMb: 6000, ramMb: 16000, gpuName: "Test" } });
+		Object.assign(ai, { phase: "ready", engine: true, models: [{ file: "Test model", path: "", sizeMb: 0, vision: localStorage.getItem("basalt.ai-dev-vision") === "yes" }], model: "Test model", hardware: { vramMb: 6000, ramMb: 16000, gpuName: "Test" } });
 		return;
 	}
 	if (!inDesktopApp) {
@@ -125,12 +127,34 @@ export const downloadModel = (id: string) =>
 		// Look the file up in its repository first, in case it was renamed; the link we know is the backup.
 		const url = m.repo && m.quant ? await invoke<string>("ai_find_model", { repo: m.repo, quant: m.quant }).catch(() => m.url) : m.url;
 		await invoke("ai_download_model", { url, file: m.file });
+		if (m.vision) await fetchReader(m.id).catch(() => {});
 		ai.model = m.file;
 		remember();
 		await refresh();
 	});
 
 export const cancelDownload = () => invoke("ai_cancel_download");
+
+/** Downloads a model's picture reader (from its repository), so it can see pictures. */
+async function fetchReader(id: string) {
+	const m = MODELS.find((x) => x.id === id)!;
+	if (!m.repo) throw new Error("This model has no picture reader to download.");
+	const file = m.file.replace(/\.gguf$/i, ".mmproj");
+	ai.download = { what: file, done: 0, total: 0 };
+	const url = await invoke<string>("ai_find_model", { repo: m.repo, quant: "mmproj" });
+	await invoke("ai_download_model", { url, file });
+}
+
+/** Adds the picture reader to a model that's already downloaded. */
+export const addPictureReader = (id: string) =>
+	withProgress(async () => {
+		await stop();
+		await fetchReader(id);
+		await refresh();
+	});
+
+/** Whether the AI in use can look at pictures: Claude, or a local model with its picture reader. */
+export const canSee = () => usingClaude() || !!ai.models.find((m) => m.file === ai.model)?.vision;
 
 /** Uses a model file the user already downloaded (copied into Basalt's folder). */
 export const addModelFile = () =>
@@ -251,6 +275,8 @@ async function start(slot: Slot) {
 			cpuMoe: cpuExperts(choice, hw),
 			context: slot === "writer" ? WRITER_CONTEXT : CONTEXT,
 			slot,
+			// Its picture reader, so it can see pictures (not needed for writing help).
+			mmproj: slot !== "writer" && file.vision ? file.path.replace(/\.gguf$/i, ".mmproj") : null,
 		};
 		// Without the speed-ups the chat memory is bigger (about 6%), so fewer layers may fit.
 		const plain = { ...args, speedups: false, mtp: false, gpuLayers: slot === "writer" && !writer ? 0 : gpuLayers(choice && { ...choice, needsMb: Math.round(choice.needsMb * 1.06) }, hw) };
@@ -259,6 +285,8 @@ async function start(slot: Slot) {
 			// Older engines don't know how to pick a card, or the speed-ups.
 			...(speedups ? [{ ...plain, device: hw.device && hw.vramMb ? hw.device : null }] : []),
 			{ ...plain, device: null },
+			// Last: without the picture reader, in case that's what won't load.
+			...(args.mmproj ? [{ ...plain, device: null, mmproj: null }] : []),
 		];
 		let used = tries[0];
 		for (let i = 0; ; i++) {

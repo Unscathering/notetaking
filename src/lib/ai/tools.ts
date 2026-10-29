@@ -104,7 +104,7 @@ export const TOOLS = [
 	fn(
 		"create_home",
 		"Propose a home page: a dashboard note that links to every area's dashboard and shows what's due, made the cave's home page. Basalt writes it. Use it once, after create_space for each area. style 'komorebi' makes it a frosted-glass dashboard with a clock header, tiles for the areas, a calendar, a focus timer and quick capture.",
-		{ title: s("The page's name; 'Home' if left out."), spaces: { type: "array", items: { type: "string" }, description: "The names of the areas (folders) to link to." }, style: s("Optional: 'plain' (default) or 'komorebi'."), colorway: s("For komorebi: indigo, sakura, matcha, ember, glacier or mono.") },
+		{ title: s("The page's name; 'Home' if left out."), spaces: { type: "array", items: { type: "string" }, description: "The names of the areas (folders) to link to." }, style: s("Optional: 'plain' (default) or 'komorebi'."), colorway: s("For komorebi: indigo, crimson (red), sakura (pink), matcha (green), ember (orange), glacier (light blue) or mono (gray).") },
 		["spaces"]
 	),
 	fn(
@@ -115,9 +115,20 @@ export const TOOLS = [
 			folder: s("Optional: only show what's in this folder."),
 			sections: { type: "array", description: "What to show, in order.", items: { type: "string", enum: ["notes", "recent", "tasks", "due_this_week", "overdue", "tags", "habits", "calendar", "timer", "capture", "actions"] } },
 			style: s("Optional: 'plain' (default) or 'komorebi' (frosted-glass tiles with a clock header; only for a new note)."),
-			colorway: s("For komorebi: indigo, sakura, matcha, ember, glacier or mono."),
+			colorway: s("For komorebi: indigo, crimson (red), sakura (pink), matcha (green), ember (orange), glacier (light blue) or mono (gray)."),
 		},
 		["path", "sections"]
+	),
+	fn(
+		"restyle_dashboard",
+		"Propose changing how a dashboard looks: its color (a Komorebi color way, or any color by name or #hex) or its style. Use this for 'make it red', 'make my dashboards blue'. For several dashboards, call it once for each.",
+		{
+			path: s("The dashboard note."),
+			colorway: s("Optional: indigo, crimson (red), sakura (pink), matcha (green), ember (orange), glacier (light blue) or mono (gray)."),
+			color: s("Optional: any color as a name or #hex, for its labels and glow."),
+			style: s("Optional: 'komorebi' (frosted glass tiles) or 'plain'."),
+		},
+		["path"]
 	),
 	fn(
 		"add_live_block",
@@ -157,7 +168,7 @@ export const TOOLS = [
 	fn("remember", "Save one new, lasting fact about the person (their likes, projects, how they like to work) to your memory note. Not about the cave, its notes or folders, and never something already in your memory. At most once or twice per message.", { fact: s("One short sentence."), about: s('"person" (default) or "project": a fact about the project this chat belongs to, if it has one.') }, ["fact"]),
 ];
 
-export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "create_space", "create_home", "create_dashboard", "add_live_block", "create_project", "note_from_template", "create_snippet", "change_appearance"]);
+export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "create_space", "create_home", "create_dashboard", "restyle_dashboard", "add_live_block", "create_project", "note_from_template", "create_snippet", "change_appearance"]);
 
 // ---- Only the tools a request needs ----
 // Every tool's instructions take room and attention; a small model picks the
@@ -183,13 +194,13 @@ export const GROUPS: Record<Group, { about: string; tools: string[]; words: RegE
 	},
 	dashboards: {
 		about: "dashboards, live lists of notes or tasks, trackers, home pages",
-		tools: ["create_dashboard", "add_live_block", "create_space", "create_home"],
+		tools: ["create_dashboard", "restyle_dashboard", "add_live_block", "create_space", "create_home"],
 		words: /\b(dashboards?|overview|live|trackers?|tracking|home ?page|tasks?|habits?)\b/i,
 	},
 	style: {
 		about: "how the app looks: themes, colors, fonts, wallpaper, CSS snippets, customizing",
-		tools: ["get_appearance", "change_appearance", "create_snippet"],
-		words: /\b(theme|looks?|appearance|colou?rs?|dark|light|fonts?|wallpaper|background|glass|frosted|accent|corners?|style|styling|pretty|aesthetic|design|css|snippets?|customi[sz]e)\b/i,
+		tools: ["get_appearance", "change_appearance", "create_snippet", "restyle_dashboard"],
+		words: /\b(theme|looks?|appearance|colou?rs?|dark|light|fonts?|wallpaper|background|glass|frosted|accent|corners?|style|styling|pretty|aesthetic|design|css|snippets?|customi[sz]e|red|blue|green|pink|purple|orange|yellow|teal|black|white|gr[ae]y|crimson)\b/i,
 	},
 };
 const ALWAYS = new Set(["list_cave", "read_note", "search_notes", "list_tags", "basalt_help", "remember"]);
@@ -297,6 +308,14 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 		const f = folderPath(a.folder);
 		return f && !exists(f) ? missing(f) : !p ? "Give the dashboard note's name." : "";
 	}
+	if (tool === "restyle_dashboard") {
+		if (!p) return "Name the dashboard note.";
+		if (!findNote(p)) return missing(p);
+		const way = str(a.colorway).toLowerCase();
+		if (way && !COLORWAYS.some((c) => c.id === way)) return `There's no color way called "${way}". Use ${COLORWAYS.map((c) => c.id).join(", ")}, or give color instead.`;
+		if (str(a.color) && !color(a.color)) return `"${str(a.color)}" isn't a color Basalt knows. Use a color name or #hex.`;
+		return way || str(a.color) || str(a.style) ? "" : "Say what to change: colorway, color or style.";
+	}
 	if (tool === "add_live_block") {
 		if (!p) return "Name the note to add it to.";
 		if (!exists(p)) return missing(p);
@@ -371,6 +390,8 @@ export function describe(tool: string, a: Args): { summary: string; icon: IconNa
 			return { summary: `Make a home page “${str(a.title) || "Home"}” linking to ${(Array.isArray(a.spaces) ? a.spaces : []).length || "every"} areas`, icon: "home" };
 		case "create_dashboard":
 			return { summary: `${findNote(p) ? "Turn" : "Make"} “${noteTitle(notePath(p))}” ${findNote(p) ? "into" : "as"} a dashboard: ${(Array.isArray(a.sections) ? a.sections : []).map((x) => SECTIONS[str(x)]?.title.toLowerCase() ?? str(x)).join(", ")}`, icon: "layers" };
+		case "restyle_dashboard":
+			return { summary: `Give “${noteTitle(notePath(p))}” ${[str(a.style) && `the ${str(a.style)} style`, str(a.colorway) && `the ${str(a.colorway)} color way`, str(a.color) && `the color ${str(a.color)}`].filter(Boolean).join(" and ") || "a new look"}`, icon: "palette" };
 		case "add_live_block":
 			return { summary: `Add a live list${str(a.title) ? ` “${str(a.title)}”` : ""} to “${noteTitle(notePath(p))}”`, icon: "layers" };
 		case "create_project":
@@ -561,6 +582,27 @@ export async function apply(c: Change): Promise<Undo> {
 			await ws.refresh();
 			await (komorebi ? useLook("komorebi") : useDashboardSnippet());
 			return () => ws.remove(made);
+		}
+		case "restyle_dashboard": {
+			const path = findNote(a.path);
+			if (!path) throw new Error(`There's no note called “${str(a.path)}”.`);
+			const old = ws.texts.get(path) ?? "";
+			const props = readProps(old);
+			const ways = COLORWAYS.map((c) => c.id);
+			let classes = (props.other.cssclass ?? props.other.cssclasses ?? "").replace(/[[\]"']/g, " ").split(/[\s,]+/).filter(Boolean);
+			const style = str(a.style).toLowerCase();
+			const komorebi = style === "komorebi" || (style !== "plain" && (classes.includes("komorebi") || !!str(a.colorway) || !!str(a.color)));
+			classes = classes.filter((c) => c !== "komorebi" && (!str(a.colorway) || !ways.includes(c)));
+			if (!classes.includes("dashboard")) classes.unshift("dashboard");
+			if (komorebi) classes.push("komorebi");
+			if (str(a.colorway)) classes.push(str(a.colorway).toLowerCase());
+			delete props.other.cssclasses;
+			props.other.cssclass = classes.join(" ");
+			if (str(a.color)) props.other.accent = color(a.color);
+			else if (str(a.colorway)) delete props.other.accent;
+			await ws.writeNote(path, writeProps(old, props));
+			if (komorebi) await useLook("komorebi");
+			return () => ws.writeNote(path, old);
 		}
 		case "add_live_block": {
 			const path = findNote(a.path);

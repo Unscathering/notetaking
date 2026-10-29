@@ -149,9 +149,12 @@ A ready look for dashboards: frosted glass tiles, `// LABELS` in a mono font,
 a clock header, tiles that breathe when you point at them. Add the
 **komorebi** snippet (Appearance → Snippets; it's added for you when you make
 a Komorebi dashboard) and give the note `cssclass: dashboard komorebi`, plus
-a color way if you like: `indigo` (the original), `sakura`, `matcha`,
-`ember`, `glacier` or `mono`, as in `cssclass: dashboard komorebi sakura`.
-Start from the **Komorebi dashboard** or **Writing dashboard** template. It
+a color way if you like: `indigo` (the original), `crimson`, `sakura`,
+`matcha`, `ember`, `glacier` or `mono`, as in `cssclass: dashboard komorebi
+sakura`. Or give the note any color of its own with an `accent` property
+(`accent: #e5484d`): the glass, borders, labels and text all follow it.
+Start from the **Komorebi dashboard** or **Writing dashboard** template.
+Dashboards open in view mode; press Ctrl+E to edit one. It
 looks best with a background picture and glass (Appearance → Background,
 Glass). Its colors are variables (`--k-surface`, `--k-border`, `--k-accent`,
 `--k-text`, `--k-muted`…), so a snippet of your own can make a new color way:

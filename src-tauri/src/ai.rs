@@ -87,6 +87,8 @@ pub struct ModelFile {
     file: String,
     path: String,
     size_mb: u64,
+    /// It has its picture reader (a `.mmproj` file next to it), so it can see pictures.
+    vision: bool,
 }
 
 #[derive(Serialize)]
@@ -169,6 +171,7 @@ pub async fn ai_status(app: AppHandle, engine: State<'_, Engine>) -> Result<Stat
                     file: e.file_name().to_string_lossy().into_owned(),
                     path: p.to_string_lossy().into_owned(),
                     size_mb: e.metadata().map(|m| m.len() / 1_048_576).unwrap_or(0),
+                    vision: p.with_extension("mmproj").exists(),
                 });
             }
         }
@@ -462,7 +465,7 @@ pub async fn ai_install_engine(app: AppHandle, engine: State<'_, Engine>) -> Res
 
 #[tauri::command]
 pub async fn ai_download_model(app: AppHandle, engine: State<'_, Engine>, url: String, file: String) -> Result<(), String> {
-    if file.contains(['/', '\\']) || !file.ends_with(".gguf") {
+    if file.contains(['/', '\\']) || !(file.ends_with(".gguf") || file.ends_with(".mmproj")) {
         return Err("That isn't a model file name.".into());
     }
     let dest = root(&app)?.join("models").join(&file);
@@ -472,6 +475,11 @@ pub async fn ai_download_model(app: AppHandle, engine: State<'_, Engine>, url: S
 /// The model file of a size (like "Q4_K_M") among a repository's files: whole
 /// models only, not the picture readers (mmproj) or pieces of split files.
 fn pick_file<'a>(files: &'a [String], quant: &str) -> Option<&'a String> {
+    // The picture reader: the most precise one there is.
+    if quant.eq_ignore_ascii_case("mmproj") {
+        let readers: Vec<&String> = files.iter().filter(|f| f.to_lowercase().contains("mmproj") && f.to_lowercase().ends_with(".gguf")).collect();
+        return ["f16", "bf16", "f32", "q8"].iter().find_map(|q| readers.iter().find(|f| f.to_lowercase().contains(q)).copied()).or(readers.first().copied());
+    }
     let usable = |f: &&String| {
         let l = f.to_lowercase();
         l.ends_with(".gguf") && !l.contains("mmproj") && !l.contains("-of-0")
@@ -553,7 +561,10 @@ pub fn ai_delete_model(app: AppHandle, file: String) -> Result<(), String> {
     if file.contains(['/', '\\']) {
         return Err("That isn't a model file name.".into());
     }
-    std::fs::remove_file(root(&app)?.join("models").join(file)).map_err(|e| e.to_string())
+    let path = root(&app)?.join("models").join(file);
+    // Its picture reader goes with it.
+    let _ = std::fs::remove_file(path.with_extension("mmproj"));
+    std::fs::remove_file(path).map_err(|e| e.to_string())
 }
 
 /// Starts the engine with a model, offloading `gpu_layers` layers to the
@@ -573,6 +584,7 @@ pub async fn ai_start(
     slot: Option<String>,
     speedups: Option<bool>,
     mtp: Option<bool>,
+    mmproj: Option<String>,
 ) -> Result<u16, String> {
     let server = engine.server(slot.as_deref());
     server.stop();
@@ -603,6 +615,8 @@ pub async fn ai_start(
             // Long answers on a slow PC can take a while; don't cut them off (the default is 10 minutes).
             .args(["--timeout", "3600"])
             .args(&extra)
+            // The picture reader, for models that can see.
+            .args(mmproj.as_deref().map(|m| vec!["--mmproj", m]).unwrap_or_default())
             .args(cpu_moe.filter(|&n| n > 0).map(|n| vec!["--n-cpu-moe".to_string(), n.to_string()]).unwrap_or_default())
             // Only the chosen graphics card, not the one built into the processor.
             .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
@@ -725,6 +739,7 @@ mod tests {
             .collect();
         assert_eq!(super::pick_file(&files, "Q4_K_M").map(String::as_str), Some("Qwen3.5-9B-MTP-Q4_K_M.gguf"));
         assert_eq!(super::pick_file(&files, "Q8_0"), None);
+        assert_eq!(super::pick_file(&files, "mmproj").map(String::as_str), Some("mmproj-F16.gguf"));
         let oss: Vec<String> = vec!["gpt-oss-20b-mxfp4.gguf".into()];
         assert_eq!(super::pick_file(&oss, "mxfp4").map(String::as_str), Some("gpt-oss-20b-mxfp4.gguf"));
     }

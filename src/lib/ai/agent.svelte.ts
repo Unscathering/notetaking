@@ -34,6 +34,8 @@ const ANSWER_ROOM = 2048;
 interface ApiMessage {
 	role: "system" | "user" | "assistant" | "tool";
 	content: string;
+	/** Pictures sent with a message, as data: addresses. */
+	images?: string[];
 	tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
 	tool_call_id?: string;
 	/** Claude's answer exactly as it came, sent back unchanged. */
@@ -71,6 +73,8 @@ export interface ChatMessage {
 	id: number;
 	role: "user" | "assistant";
 	text: string;
+	/** Small copies of the pictures sent with it, to show. */
+	images?: string[];
 	steps: Step[];
 	plan?: Plan;
 	error?: string;
@@ -79,6 +83,8 @@ export interface ChatMessage {
 	sources?: string[];
 	/** Numbers or dates in the answer that its notes don't contain: worth a double-check. */
 	unsure?: string[];
+	/** It said it changed things but didn't use a tool, even when asked again: nothing changed. */
+	claimed?: boolean;
 	/** Waiting on the AI (nothing coming in yet), and what it's doing, if known. */
 	thinking?: boolean;
 	stage?: string;
@@ -263,7 +269,9 @@ async function saveChat() {
 	const info: ChatInfo = { id: chat.id, title: old?.title ?? (first.length > 48 ? `${first.slice(0, 46).trimEnd()}…` : first), project: chat.project, updated: Date.now() };
 	// Undo can't be saved, so a reopened plan just says what happened.
 	const messages = chat.messages.map((m) => ({ ...m, plan: m.plan && { ...m.plan, undo: [], status: m.plan.status === "doing" ? "done" : m.plan.status } }));
-	await ws.cave.write(chatPath(chat.id), JSON.stringify({ ...info, history, messages }));
+	// Pictures stay out of the saved chat (only their small copies, shown in it, are kept).
+	const saved = history.map((m) => (m.images?.length ? { ...m, images: undefined, content: `${m.content} [${m.images.length === 1 ? "a picture" : `${m.images.length} pictures`}]` } : m));
+	await ws.cave.write(chatPath(chat.id), JSON.stringify({ ...info, history: saved, messages }));
 	chat.list = [info, ...chat.list.filter((c) => c.id !== chat.id)];
 	await saveList();
 }
@@ -304,7 +312,13 @@ export async function setProject(folder: string) {
 
 /** What goes with the latest message: where the user is, and notes that may help. */
 function aboutNow(found: Found[]): string {
-	return `${context()}${foundNotes(found)}`;
+	return `${context()}${waitingPlans()}${foundNotes(found)}`;
+}
+
+/** Changes from earlier in the chat that are still waiting for "Do it": the AI has to know they haven't happened. */
+function waitingPlans(): string {
+	const waiting = chat.messages.slice(0, -1).flatMap((m) => (m.plan?.status === "waiting" ? m.plan.changes.filter((c) => c.checked).map((c) => c.summary) : []));
+	return waiting.length ? `\nStill waiting for the user to press "Do it" (so NOT done yet): ${waiting.join("; ")}.` : "";
 }
 
 /** The notes found for a message, as the AI gets them. */
@@ -354,9 +368,10 @@ ${changes}
 - For folders with dashboards, a "second brain" or "set up my cave": use create_space once for each area (Basalt writes each dashboard) and create_home once at the end. Don't write dashboards or a home page yourself with create_note: it takes far too long.
 - To make a home page some other way, write the note with create_note first (like "Home"), then set_home on it.
 - Change the app's look (theme, colors, fonts) only when the user asks about the look. For anything the settings can't do, write a CSS snippet with create_snippet.
-- For dashboards use create_dashboard (Basalt writes the live lists); to add one list to a note, add_live_block. When the user wants a dashboard or home page that looks good (aesthetic, glass, tiles, "like Obsidian"), give create_dashboard or create_home style "komorebi" and a colorway that fits what they say (indigo, sakura, matcha, ember, glacier, mono). For a new project, create_project. For meetings, book notes and the like, note_from_template.
+- For dashboards use create_dashboard (Basalt writes the live lists); to add one list to a note, add_live_block. When the user wants a dashboard or home page that looks good (aesthetic, glass, tiles, "like Obsidian"), give create_dashboard or create_home style "komorebi" and a colorway that fits what they say (indigo, crimson, sakura, matcha, ember, glacier, mono). To change an existing dashboard's colors ("make it red"), use restyle_dashboard, once for each dashboard. For a new project, create_project. For meetings, book notes and the like, note_from_template.
 - Before writing anything Basalt-specific yourself (a \`\`\`basalt live block, CSS for a snippet, a template), look it up with basalt_help and follow what it says.
 - If a tool says a change won't work, fix it or leave it out. Never repeat a tool call you already made.
+- If something you planned seems not to have happened, it's most likely still waiting for the user to press "Do it": say so. Never claim Basalt is broken or has a "system limitation".
 - When you learn something new and lasting about the person (their projects, likes, how they want you to talk), save it with remember: at most twice per message, and never about the cave.
 
 Today is ${new Date().toDateString()}.
@@ -371,7 +386,9 @@ ${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversa
 // are dropped, so a long chat never goes over.
 
 /** A rough token count: about 3 characters per token, erring on the high side. */
-const tokens = (v: unknown) => Math.ceil(JSON.stringify(v).length / 3);
+/** A picture counts as about this many tokens, whatever its size in bytes. */
+const PICTURE_TOKENS = 800;
+const tokens = (v: unknown) => Math.ceil(JSON.stringify(v, (k, val) => (k === "images" && Array.isArray(val) ? val.map(() => "x".repeat(PICTURE_TOKENS * 3)) : val)).length / 3);
 
 /** Older messages as plain text: what was said, without the looking around. */
 function plain(list: ApiMessage[]): ApiMessage[] {
@@ -400,7 +417,11 @@ function fit(sys: string, tools: object[], budget: number, extra = ""): ApiMessa
 	if (size() > room) now = now.filter((m, i) => i === 0 || m.role !== "tool" || i > now.length - 4);
 	// Where the user is and the notes found for it go with the message itself.
 	if (extra && now[0]?.role === "user") now[0] = { ...now[0], content: `${now[0].content}\n\n(${extra.trim()})` };
-	return [{ role: "system", content: sys }, ...older, ...now];
+	// Pictures go to the engine the way it reads them (older messages' pictures are left out above).
+	const withPictures = now.map((m) =>
+		m.images?.length ? ({ role: m.role, content: [{ type: "text", text: m.content }, ...m.images.map((url) => ({ type: "image_url", image_url: { url } }))] } as unknown as ApiMessage) : m
+	);
+	return [{ role: "system", content: sys }, ...older, ...withPictures];
 }
 
 const tooLong = (e: unknown) => /exceed_context_size|context size|context length|too long/i.test(String(e));
@@ -409,6 +430,11 @@ const tooLong = (e: unknown) => /exceed_context_size|context size|context length
 export const THINKING = ["Pondering", "Mulling it over", "Rummaging", "Noodling", "Brewing ideas", "Puzzling", "Daydreaming", "Scheming", "Connecting dots", "Chewing on it", "Doodling", "Tinkering"];
 
 const say = (m: ChatMessage, patch: Partial<ChatMessage>) => Object.assign(chat.messages.find((x) => x.id === m.id) ?? m, patch);
+
+/** Whether a reply says it changed, made or updated something (to catch it saying so without doing it). */
+export function claimsChanges(text: string): boolean {
+	return /\b(i'?ve|i have|i just|i)\s+(now\s+)?(updated|changed|made|applied|set|added|created|renamed|moved|deleted|removed|recolou?red|switched|turned|fixed|rewritten|rewrote|edited)\b|\bchanges made\b|\b(is|are) now (updated|applied|red|blue|green|pink|purple)\b|✅/i.test(text);
+}
 
 /** The groups of tools the last message needed, for follow-ups like "yes, do that". */
 let lastGroups: Group[] = [];
@@ -452,15 +478,15 @@ export async function sortRequest(text: string, last = chat.messages.filter((m) 
 	return [...new Set([...byWords, ...byAi, ...followUp])];
 }
 
-export async function send(text: string) {
-	if (chat.busy || !text.trim()) return;
+export async function send(text: string, pictures: Array<{ full: string; thumb: string }> = []) {
+	if (chat.busy || (!text.trim() && !pictures.length)) return;
 	chat.busy = true;
 	sameCave();
 	const memory = chat.memoryLoaded ? chat.memory : await loadMemory();
 	if (chat.project && !chat.projectMemory) await loadProjectMemory();
-	chat.messages.push({ id: nextId++, role: "user", text, steps: [] });
+	chat.messages.push({ id: nextId++, role: "user", text, steps: [], ...(pictures.length ? { images: pictures.map((p) => p.thumb) } : {}) });
 	turnStart = history.length;
-	history.push({ role: "user", content: text });
+	history.push({ role: "user", content: text || "(Look at this picture.)", ...(pictures.length ? { images: pictures.map((p) => p.full) } : {}) });
 	chat.messages.push({ id: nextId++, role: "assistant", text: "", steps: [], streaming: true });
 	const reply = chat.messages[chat.messages.length - 1];
 	const plan: Change[] = [];
@@ -469,6 +495,8 @@ export async function send(text: string) {
 	lastGroups = groups;
 	const tools = usingClaude() ? TOOLS : toolsFor(groups);
 	let failed = false;
+	/** Sent back once to actually make changes it only described. */
+	let nudged = false;
 	const done = new Set<string>();
 	let changeId = 1;
 	let memories = 0;
@@ -539,6 +567,17 @@ export async function send(text: string) {
 			}
 			if (stopped || !real.length) {
 				history.push({ role: "assistant", content, raw });
+				// Small models sometimes say "Done! I changed…" without calling a tool. Nothing has changed then:
+				// send it back once to really do it, or to say plainly that it can't.
+				if (!stopped && !plan.length && tools.some((t) => WRITES.has(t.function.name)) && claimsChanges(content)) {
+					if (!nudged) {
+						nudged = true;
+						history.push({ role: "user", content: "(Basalt: you described changes, but you didn't use any tool, so NOTHING has changed. Make the changes now with the tools, or tell the user plainly that you can't do it and why. Don't describe changes you haven't made.)" });
+						say(reply, { text: "" });
+						continue;
+					}
+					say(reply, { claimed: true });
+				}
 				break;
 			}
 			history.push({ role: "assistant", content, raw, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
@@ -591,7 +630,12 @@ export async function send(text: string) {
 							moreStep.label = `…and ${plan.length - SHOWN} more ${plan.length - SHOWN === 1 ? "change" : "changes"}`;
 							moreStep.detail = plan.slice(SHOWN).map((c) => `• ${c.summary}`).join("\n");
 						}
-						result = "Added to the plan. The user approves the whole plan with one click after your reply; don't ask them to confirm and don't say it's done.";
+						result =
+							chat.access === "full" && call.name === "clear_cave"
+								? 'Added. Wiping the whole cave is the one change that always waits for the user to press "Do it", even with full access: tell them to press Do it below to wipe everything.'
+								: chat.access === "full"
+									? "Added. It will be made when your reply ends."
+									: "Added to the plan. The user approves the whole plan with one click after your reply; don't ask them to confirm and don't say it's done.";
 					}
 				} else {
 					const s = step({ icon: stepIcon(call.name), label: `${stepLabel(call.name, args, true)}…`, active: true });

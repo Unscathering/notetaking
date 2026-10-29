@@ -365,8 +365,10 @@ const look = EditorView.theme({
 	".basalt-habit-cell.is-today": { outline: "1.5px solid color-mix(in srgb, var(--accent) 60%, transparent)", outlineOffset: "1px" },
 	".basalt-habit-streak": { paddingLeft: "8px", color: "var(--muted)", fontSize: "0.85em", whiteSpace: "nowrap" },
 	// Dashboards: columns and widgets (widgets.ts). Plain here; snippets dress them up.
-	".basalt-row": { display: "grid", gap: "14px", alignItems: "start", margin: "8px 0 14px" },
+	".basalt-row": { display: "grid", gap: "14px", alignItems: "stretch", margin: "8px 0 14px" },
 	".basalt-column": { display: "flex", flexDirection: "column", gap: "14px", minWidth: "0" },
+	// Columns end level: the last part of each fills what's left, so there are no gaps.
+	".basalt-column > .basalt-block:last-child": { flex: "1" },
 	".basalt-column > .basalt-block": { margin: "0", padding: "14px 16px", border: "1px solid var(--border)", borderRadius: "calc(var(--radius) * 1.3)", background: "color-mix(in srgb, var(--raised) 55%, transparent)" },
 	".basalt-header": { position: "relative", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "14px", padding: "20px 24px", border: "1px solid var(--border)", borderRadius: "calc(var(--radius) * 1.4)", background: "color-mix(in srgb, var(--raised) 55%, transparent)", overflow: "hidden" },
 	".basalt-header-image": { position: "absolute", inset: "0", width: "100%", height: "100%", objectFit: "cover", zIndex: "0", pointerEvents: "none" },

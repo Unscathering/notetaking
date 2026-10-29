@@ -46,7 +46,7 @@
 				...helpHooks,
 				live: liveHooksFor(p),
 				onCursor: (line) => (ws.cursorLine = line),
-			}, ws.viewing.has(p)),
+			}, ws.isViewing(p)),
 		});
 	}
 
@@ -132,11 +132,33 @@
 		host.classList.add(...classes);
 		noteClasses = classes;
 		host.dataset.cssclass = classes.join(" ");
+		// A dashboard's own color (its accent property), for looks like Komorebi to use.
+		const accent = /^#[0-9a-f]{6}$/i.test(props.other.accent ?? "") ? props.other.accent! : "";
+		const vars = ["--k-accent", "--k-accent-2", "--k-glow", "--k-surface", "--k-overlay", "--k-raised", "--k-border", "--k-border-hover", "--k-text", "--k-muted", "--k-deep", "--note-accent"];
+		for (const v of vars) host.style.removeProperty(v);
+		if (accent) {
+			const c = [1, 3, 5].map((i) => parseInt(accent.slice(i, i + 2), 16));
+			// The whole look follows the color: dark glass tinted with it, its light shade for text.
+			const mix = (t: number, toward: number[]) => c.map((v, i) => Math.round(v * t + toward[i] * (1 - t))).join(", ");
+			const night = [10, 10, 18], day = [240, 240, 245];
+			host.style.setProperty("--k-accent", `rgb(${mix(0.55, day)})`);
+			host.style.setProperty("--k-accent-2", accent);
+			host.style.setProperty("--k-glow", c.join(", "));
+			host.style.setProperty("--k-surface", `rgba(${mix(0.16, night)}, 0.46)`);
+			host.style.setProperty("--k-overlay", `rgba(${mix(0.22, night)}, 0.32)`);
+			host.style.setProperty("--k-raised", `rgba(${mix(0.38, night)}, 0.36)`);
+			host.style.setProperty("--k-border", `rgba(${mix(0.6, day)}, 0.18)`);
+			host.style.setProperty("--k-border-hover", `rgba(${mix(0.3, day)}, 0.48)`);
+			host.style.setProperty("--k-text", `rgb(${mix(0.12, day)})`);
+			host.style.setProperty("--k-muted", `rgb(${mix(0.35, [150, 150, 160])})`);
+			host.style.setProperty("--k-deep", mix(0.1, [4, 4, 8]));
+			host.style.setProperty("--note-accent", accent);
+		}
 	});
 
 	// View mode: read only and tidy (see setup.ts), and a class for the styles that hide empty bits.
 	$effect(() => {
-		const on = ws.viewing.has(path);
+		const on = ws.isViewing(path);
 		if (!mounted || !view || shown !== path) return;
 		if (view.state.readOnly !== on) view.dispatch({ effects: viewMode.reconfigure(viewing(on)) });
 		host.classList.toggle("is-reading", on);

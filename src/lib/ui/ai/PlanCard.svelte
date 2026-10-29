@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The AI's proposed changes: untick anything, then "Do it". Undo takes it all back.
-	import { approve, skip, undo, type ChatMessage } from "../../ai/agent.svelte";
+	import { approve, chat, skip, undo, type ChatMessage } from "../../ai/agent.svelte";
 	import { icon } from "../icons";
 
 	let { m }: { m: ChatMessage } = $props();
@@ -33,6 +33,9 @@
 		{/each}
 	</ul>
 	<div class="foot">
+		{#if plan.status === "waiting" && chat.access === "full" && plan.changes.some((c) => c.tool === "clear_cave")}
+			<span class="note warn">{@html icon("alert", 13)} Wiping everything always waits for your OK.</span>
+		{/if}
 		{#if plan.status === "waiting"}
 			<button class="go" disabled={!count} onclick={() => approve(m)}>{@html icon("check", 13)} Do it{count < plan.changes.length ? ` (${count})` : ""}</button>
 			<button class="ghost" onclick={() => skip(m)}>Not now</button>
@@ -149,6 +152,7 @@
 	}
 	.foot {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
 		padding: 9px 12px;
@@ -178,6 +182,10 @@
 		border: 1px solid var(--border);
 		background: transparent;
 		color: var(--text);
+	}
+	.note.warn {
+		flex-basis: 100%;
+		color: #e5a84b;
 	}
 	.note {
 		flex: 1;

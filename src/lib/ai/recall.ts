@@ -91,7 +91,9 @@ export function unbacked(answer: string, sources: string[]): string[] {
 	const text = sources.join("\n");
 	const digits = new Set(text.match(/\d+/g) ?? []);
 	const out: string[] = [];
-	for (const n of new Set(answer.match(/\d+(?:[-/:.]\d+)*/g) ?? [])) {
+	// Not numbers of fact: color codes (#ff3b30), code, and "10x cooler".
+	const said = answer.replace(/`[^`]*`/g, " ").replace(/#[0-9a-f]{3,8}\b/gi, " ").replace(/\b\d+x\b/gi, " ");
+	for (const n of new Set(said.match(/\d+(?:[-/:.]\d+)*/g) ?? [])) {
 		const parts = n.match(/\d+/g) ?? [];
 		if (n.length < 2 && parts.length < 2) continue;
 		if (text.includes(n)) continue;

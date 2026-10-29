@@ -2,7 +2,7 @@
 	// The model cards: which suits this PC, how fast and clever each is, and
 	// whether it's downloaded.
 	import { MODELS, fit } from "../../ai/models";
-	import { ai, deleteModel, downloadModel, recommendedModel, useModel, useWriterModel } from "../../ai/engine.svelte";
+	import { addPictureReader, ai, deleteModel, downloadModel, recommendedModel, useModel, useWriterModel } from "../../ai/engine.svelte";
 	import { icon } from "../icons";
 	import { bench } from "../../ai/bench.svelte";
 
@@ -31,6 +31,7 @@
 			<div class="top">
 				<b>{m.name}</b>
 				{#if m.id === best.id}<span class="badge">{@html icon("sparkles", 11)} {tested ? `Best in your test (${tested.score})` : "Recommended for your PC"}</span>{/if}
+				{#if m.vision}<span class="sees" title="It can look at pictures you send it in the chat">{@html icon("image", 11)} Sees pictures</span>{/if}
 				<span class="size">{m.sizeGb} GB</span>
 			</div>
 			<p>{m.about}</p>
@@ -40,6 +41,9 @@
 			</div>
 			<div class="foot">
 				<span class="fit fit-{f}">{f === "ok" && m.expertMb && hw.vramMb ? "Runs well, with part of it in memory" : FIT[f]}</span>
+				{#if have && m.vision && !ai.models.find((f) => f.file === m.file)?.vision}
+					<button class="ghost" disabled={!!ai.download} title="Downloads the small file that lets it see pictures" onclick={() => addPictureReader(m.id)}>{@html icon("image", 13)} Add picture reading</button>
+				{/if}
 				{#if have}
 					{#if ai.model === m.file}
 						<span class="using">{@html icon("check", 13)} In use</span>
@@ -181,6 +185,16 @@
 		color: var(--on-accent);
 		font-size: 10.5px;
 		font-weight: 650;
+	}
+	.sees {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 1px 7px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		color: var(--muted);
+		font-size: 10.5px;
 	}
 	.size {
 		margin-left: auto;

@@ -8,7 +8,8 @@
 // word: `cssclass: dashboard komorebi sakura`.
 
 export const COLORWAYS: Array<{ id: string; name: string; about: string }> = [
-	{ id: "indigo", name: "Indigo", about: "The original: deep indigo glass with lilac labels." },
+	{ id: "indigo", name: "Indigo", about: "The original: deep indigo glass with cool silver-blue labels." },
+	{ id: "crimson", name: "Crimson", about: "Deep reds on dark wine glass." },
 	{ id: "sakura", name: "Sakura", about: "Cherry-blossom pinks on plum glass." },
 	{ id: "matcha", name: "Matcha", about: "Soft greens on mossy glass." },
 	{ id: "ember", name: "Ember", about: "Warm amber and rust, like a fire at night." },
@@ -18,22 +19,29 @@ export const COLORWAYS: Array<{ id: string; name: string; about: string }> = [
 
 export const KOMOREBI_CSS = `/* Komorebi: frosted glass dashboard tiles.
    Use it with "cssclass: dashboard komorebi" (add a color way:
-   indigo, sakura, matcha, ember, glacier or mono).
+   indigo, crimson, sakura, matcha, ember, glacier or mono).
+   A note can also set its own color with an "accent" property (#hex).
    Rebuilt for Basalt from InlitX's Dashboard-Komorebi. */
 
 .note-komorebi {
-  --k-surface: rgba(18, 21, 43, 0.44);
-  --k-overlay: rgba(26, 28, 56, 0.30);
-  --k-raised: rgba(54, 41, 82, 0.34);
-  --k-border: rgba(171, 167, 215, 0.17);
-  --k-border-hover: rgba(226, 228, 244, 0.44);
-  --k-accent: #d7bddf;
-  --k-accent-2: #9da9df;
-  --k-glow: 220, 142, 210;
-  --k-deep: 8, 17, 37;
+  --k-surface: rgba(16, 20, 40, 0.46);
+  --k-overlay: rgba(24, 29, 54, 0.32);
+  --k-raised: rgba(40, 48, 86, 0.36);
+  --k-border: rgba(170, 178, 220, 0.17);
+  --k-border-hover: rgba(226, 230, 246, 0.44);
+  --k-accent: #c9d2f2;
+  --k-accent-2: #9daae3;
+  --k-glow: 140, 155, 230;
+  --k-deep: 8, 14, 34;
   --k-text: #d9dce8;
   --k-muted: #7a7d92;
   --k-font: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+.note-komorebi.note-crimson {
+  --k-surface: rgba(38, 12, 18, 0.46); --k-overlay: rgba(52, 16, 24, 0.32); --k-raised: rgba(92, 28, 40, 0.36);
+  --k-border: rgba(232, 150, 160, 0.18); --k-border-hover: rgba(255, 205, 210, 0.48);
+  --k-accent: #ff8a8a; --k-accent-2: #e5484d; --k-glow: 229, 72, 77; --k-deep: 28, 4, 8;
+  --k-text: #f3dcdc; --k-muted: #a37a7e;
 }
 .note-komorebi.note-sakura {
   --k-surface: rgba(43, 18, 34, 0.44); --k-overlay: rgba(56, 26, 44, 0.30); --k-raised: rgba(92, 41, 70, 0.34);

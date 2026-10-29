@@ -51,6 +51,8 @@ export const claudeName = () => CLAUDE_MODELS.find((m) => m.id === cloud.model)?
 interface EngineMessage {
 	role: "system" | "user" | "assistant" | "tool";
 	content: string;
+	/** Pictures, as data: addresses. */
+	images?: string[];
 	tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
 	tool_call_id?: string;
 	/** Claude's answer exactly as it came, to send back unchanged. */
@@ -88,6 +90,13 @@ function convert(list: EngineMessage[]): { system: string; messages: Beta[] } {
 				? (m.raw as Block[])
 				: [...(m.content.trim() ? [{ type: "text" as const, text: m.content }] : []), ...(m.tool_calls ?? []).map((c) => ({ type: "tool_use" as const, id: c.id, name: c.function.name, input: parse(c.function.arguments) }))];
 			if (content.length) messages.push({ role: "assistant", content });
+		} else if (m.images?.length) {
+			// Pictures first, then the words about them.
+			const pictures = m.images.flatMap((url): Block[] => {
+				const found = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(url);
+				return found ? [{ type: "image", source: { type: "base64", media_type: found[1] as "image/png", data: found[2] } }] : [];
+			});
+			messages.push({ role: "user", content: [...pictures, { type: "text", text: m.content }] });
 		} else messages.push({ role: "user", content: m.content });
 	}
 	return { system, messages };
