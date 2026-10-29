@@ -10,7 +10,7 @@ import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@cod
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
 import { noteHeader } from "./properties";
-import type { TitleHooks } from "./inlineTitle";
+import { titleSync, type TitleHooks } from "./inlineTitle";
 import { suggestions, type SuggestHooks } from "./suggest";
 import { richBlocks, type BlockHooks } from "./blocks";
 import { blockHandles, dimOthers, pasteAndDrop, typewriter, type BehaviorHooks } from "./behaviors";
@@ -172,6 +172,7 @@ export function editorExtensions(hooks: EditorHooks, reading = false): Extension
 		syntaxHighlighting(highlight),
 		livePreview,
 		noteHeader(hooks),
+		hooks.title ? titleSync(hooks.title) : [],
 		richBlocks(hooks),
 		suggestions(hooks),
 		blockHandles,

@@ -41,9 +41,11 @@
 	import { COMMANDS, keyName } from "./lib/commands";
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
-	import { noteTitle, pickCave } from "./lib/cave";
+	import { inDesktopApp, noteTitle, pickCave } from "./lib/cave";
 	import { isNewTab, isView, startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
 	import NewTab from "./lib/ui/NewTab.svelte";
+	import WindowControls from "./lib/ui/WindowControls.svelte";
+	import ViewHeader from "./lib/ui/ViewHeader.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
 	import { mediaUrl } from "./lib/theme/media.svelte";
 
@@ -125,6 +127,9 @@
 	const refocus = () => void loadSnippets();
 	startHistory();
 
+	// The desktop app draws its own window buttons (no title bar); try it in a browser with basalt.dev-frame.
+	const frameless = inDesktopApp || (() => { try { return !!localStorage.getItem("basalt.dev-frame"); } catch { return false; } })();
+
 	async function chooseCave() {
 		const cave = await pickCave();
 		if (cave) await ws.load(cave);
@@ -168,7 +173,8 @@
 	</filter>
 </svg>
 
-<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus} class:ai-open={aiPanel.open} class:is-resizing={resizing} style:--ai-width={`${aiWidth}px`}>
+{#if frameless}<WindowControls />{/if}
+<div class="app" class:frameless class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus} class:ai-open={aiPanel.open} class:is-resizing={resizing} style:--ai-width={`${aiWidth}px`}>
 	<Ribbon />
 	<aside class="sidebar">
 		<Sidebar {ms} />
@@ -178,8 +184,8 @@
 		{#if ws.sidebarOpen && !writing.focus}
 			<div class="edge edge-sidebar" role="separator" aria-orientation="vertical" aria-label="Sidebar width" title="Drag to resize · double-click to reset" onpointerdown={(e) => dragEdge(e, "sidebar")} ondblclick={() => resetEdge("sidebar")}></div>
 		{/if}
-		<div class="tabbar">
-			<div class="tabs" role="tablist">
+		<div class="tabbar" data-tauri-drag-region>
+			<div class="tabs" role="tablist" data-tauri-drag-region>
 				{#each ws.tabs as path (path)}
 					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} role="tab" aria-selected={ws.active === path}>
 						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
@@ -194,6 +200,7 @@
 
 		<div class="panes" style:--split={`${splitAt}%`} class:is-split={!!ws.split}>
 		<div class="editor-area" bind:this={editorHost}>
+			{#if ws.cave && ws.active && !isNewTab(ws.active) && !writing.focus}<ViewHeader path={ws.active} />{/if}
 			{#if !ws.cave}
 				<div class="start">
 					<h1>Basalt</h1>
@@ -460,6 +467,11 @@
 		overflow: hidden;
 		background: var(--part-page-bg, var(--surface-page));
 	}
+	/* Room for the window buttons in the top-right corner. */
+	.frameless:not(.ai-open) .tabbar,
+	.frameless.ai-open :global(.ai > header) {
+		padding-right: 148px;
+	}
 	.tabbar {
 		display: flex;
 		align-items: center;
@@ -469,6 +481,7 @@
 		border-bottom: 1px solid var(--chrome-line);
 	}
 	.tabs {
+		flex: 1;
 		display: flex;
 		gap: 2px;
 		min-width: 0;

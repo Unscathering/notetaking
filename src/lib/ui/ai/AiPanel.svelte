@@ -190,7 +190,7 @@
 </script>
 
 <aside class="ai" aria-label="AI">
-	<header>
+	<header data-tauri-drag-region>
 		{#if aiPanel.view !== "chat"}
 			<button class="icon" onclick={() => (aiPanel.view = "chat")} title="Back">{@html icon("back", 16)}</button>
 			<span class="title"><b>{aiPanel.view === "memory" ? "Memory" : aiPanel.view === "chats" ? "Chats" : "AI models"}</b></span>

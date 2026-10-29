@@ -20,16 +20,18 @@ function section(text: string, heading: string): string | null {
 	return lines.slice(start, end).join("\n");
 }
 
-export function liveHooksFor(here: string): LiveHooks {
+/** `where` gives the note's path now (it changes when the note is renamed). */
+export function liveHooksFor(where: string | (() => string)): LiveHooks {
+	const at = typeof where === "string" ? () => where : where;
 	return {
 		runBlock(source) {
 			const spec = parseSpec(source);
-			return { spec, rows: runQuery(spec, ws.texts, (t) => ws.resolve(t), here) };
+			return { spec, rows: runQuery(spec, ws.texts, (t) => ws.resolve(t), at()) };
 		},
 		embed(target) {
 			const [name, heading] = target.split("#");
 			const path = ws.resolve(name);
-			if (!path || path === here) return null;
+			if (!path || path === at()) return null;
 			let text = ws.texts.get(path) ?? "";
 			const fm = frontmatterRange(text);
 			if (fm) text = text.slice(fm.to);

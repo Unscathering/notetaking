@@ -12,7 +12,7 @@
 </script>
 
 <div class="sidebar-inner">
-	<header class="head">
+	<header class="head" data-tauri-drag-region>
 		<button class="cave-name" onclick={() => (ws.modal = "caves")} title={inDesktopApp ? "Switch cave" : "The sample cave"}>
 			<span class="cave-icon">{@html icon("cave")}</span>
 			<span>{ws.cave?.name ?? "No cave"}</span>

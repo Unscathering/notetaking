@@ -29,28 +29,63 @@
 	const states = new Map<string, { state: EditorState; scroll: number }>();
 	let shown = "";
 
+	/**
+	 * Where each note's editor state saves to. Renaming a note moves its entry,
+	 * so the state (undo, cursor) carries on under the new name.
+	 */
+	const homes = new Map<string, { p: string }>();
+
 	function stateFor(p: string, initial: string): EditorState {
 		const saved = states.get(p);
 		if (saved) return saved.state;
+		const home = { p };
+		homes.set(p, home);
 		// Start just after the note's properties, so the header shows tidy.
 		const start = frontmatterRange(initial)?.to ?? 0;
 		return EditorState.create({
 			doc: initial,
 			selection: { anchor: Math.min(start, initial.length) },
 			extensions: editorExtensions({
-				onChange: (t) => onchange(p, t),
+				onChange: (t) => onchange(home.p, t),
 				openLink: (target) => onopenlink(target),
 				noteNames: () => ws.notes.map((n) => n.replace(/\.md$/i, "")),
 				pickImage: () => ws.pickImage(),
 				saveImage: (bytes, ext) => ws.saveImage(bytes, ext),
 				imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
 				...helpHooks,
-				live: liveHooksFor(p),
+				live: liveHooksFor(() => home.p),
 				onCursor: (line) => (ws.cursorLine = line),
-				title: writing.inlineTitle && !isView(p) ? { name: noteTitle(p), rename: (name) => void renameFromTitle(p, name), fresh: () => ws.takeFresh(p) } : undefined,
+				title:
+					writing.inlineTitle && !isView(p)
+						? {
+								get name() {
+									return noteTitle(home.p);
+								},
+								rename: (name) => void renameFromTitle(home.p, name),
+								renameQuietly: (name) => void ws.rename(home.p, name),
+								fresh: () => ws.takeFresh(home.p),
+							}
+						: undefined,
 			}, ws.isViewing(p)),
 		});
 	}
+
+	// A renamed note keeps its editor state (and the editor stays put if it's showing).
+	function moved(from: string, to: string) {
+		const swap = (k: string) => (k === from ? to : k.startsWith(`${from}/`) ? to + k.slice(from.length) : k);
+		for (const [k, home] of [...homes]) {
+			const n = swap(k);
+			if (n === k) continue;
+			homes.delete(k);
+			homes.set(n, home);
+			home.p = n;
+			const st = states.get(k);
+			states.delete(k);
+			if (st) states.set(n, st);
+		}
+		shown = swap(shown);
+	}
+	ws.hooks.renamed.push(moved);
 
 	/**
 	 * Renames a note from its inline title. A first heading that matched the old
@@ -81,6 +116,7 @@
 		measure.observe(view.scrollDOM);
 		view.focus();
 		return () => {
+			ws.hooks.renamed.splice(ws.hooks.renamed.indexOf(moved), 1);
 			measure.disconnect();
 			if (activeEditor.view === view) activeEditor.view = null;
 			view?.destroy();

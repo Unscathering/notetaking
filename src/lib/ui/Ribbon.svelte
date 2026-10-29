@@ -14,7 +14,7 @@
 			: (id === "ai" && aiPanel.open) || (id === "appearance" && ws.modal === "settings") || (id === "graph" && ws.active === "basalt:graph") || (id === "calendar" && ws.active === "basalt:calendar") || (id === "caves" && ws.modal === "caves") || (id === "backups" && ws.modal === "backups") || (id === "palette" && ws.modal === "palette");
 </script>
 
-<nav class="ribbon" aria-label="Commands">
+<nav class="ribbon" aria-label="Commands" data-tauri-drag-region>
 	{#each top as c (c.id)}
 		<button class:is-on={isOn(c.id)} onclick={c.run} title={c.keys ? `${c.label} (${c.keys})` : c.label}>{@html icon(c.icon, 18)}</button>
 	{/each}
