@@ -39,7 +39,7 @@
 			<div class="bar"><i style="width: {p.percent}%"></i></div>
 			<div class="count">
 				<span><b>{p.percent}%</b> · test {p.doneOverall + 1 > p.total ? p.total : p.doneOverall + 1} of {p.total}</span>
-				<span>{clock(p.elapsed)} so far{p.left ? ` · about ${clock(p.left)} left` : ""}</span>
+				<span>{clock(p.elapsed)} so far · {p.left ? `about ${clock(p.left)} left` : "working out how long…"}</span>
 			</div>
 			<p class="now">Now: {bench.current}</p>
 			<div class="stats">

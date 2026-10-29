@@ -781,9 +781,13 @@ export function progress(now = Date.now()) {
 	const total = bench.of * bench.models;
 	const doneOverall = (bench.modelIndex - 1) * bench.of + finished;
 	const elapsed = (now - bench.started) / 1000;
-	// Jobs so far on this model set the pace; a model just started borrows the last one's.
-	const perJob = finished ? (now - bench.modelStarted) / 1000 / finished : bench.modelSeconds.length ? bench.modelSeconds.at(-1)! / bench.of : 0;
-	const left = perJob ? perJob * (total - doneOverall) : 0;
+	// The middle job time so far sets the pace (one slow job, like the first after
+	// loading a model, doesn't throw it off); a model just started borrows the last one's.
+	// Until a few jobs are done there's no telling.
+	const times = bench.done.map((j) => j.seconds).sort((x, y) => x - y);
+	const perJob = times.length >= 3 ? times[Math.floor(times.length / 2)] : bench.modelSeconds.length ? bench.modelSeconds.at(-1)! / bench.of : 0;
+	// Models still to load take a while each, too.
+	const left = perJob ? perJob * (total - doneOverall) + (bench.models - bench.modelIndex) * 30 : 0;
 	return {
 		finished,
 		passed,
@@ -806,6 +810,7 @@ async function testModel(): Promise<TestRun> {
 	bench.of = JOBS.length;
 	bench.done = [];
 	bench.modelStarted = Date.now();
+	bench.current = "Loading the model…";
 	// Make sure the engine really has this model loaded (and restart it once if not).
 	await wake();
 	let servedBy = await loadedModel().catch(() => "");
