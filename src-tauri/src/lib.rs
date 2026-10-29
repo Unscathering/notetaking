@@ -52,6 +52,7 @@ pub fn run() {
             ai::ai_stop_chat,
             update::update_install,
             web::clip_fetch,
+            web::fetch_file,
             speech::speech_status,
             speech::speech_install,
             speech::speech_transcribe,

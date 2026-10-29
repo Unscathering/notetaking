@@ -125,6 +125,44 @@ export async function saveBackground(file: File): Promise<{ id: string; kind: "i
 	return { id, kind };
 }
 
+/** What kind of file some bytes are, from how they start (links don't always say). */
+function sniff(b: Uint8Array): string {
+	const text = (from: number, to: number) => String.fromCharCode(...b.slice(from, to));
+	if (text(0, 4) === "GIF8") return "image/gif";
+	if (b[0] === 0x89 && text(1, 4) === "PNG") return "image/png";
+	if (b[0] === 0xff && b[1] === 0xd8) return "image/jpeg";
+	if (text(0, 4) === "RIFF" && text(8, 12) === "WEBP") return "image/webp";
+	if (text(4, 8) === "ftyp") return /avif|avis/.test(text(8, 12)) ? "image/avif" : "video/mp4";
+	if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
+	if (/^\s*<(svg|\?xml)/i.test(text(0, 64))) return "image/svg+xml";
+	if (/^\s*<(!doctype|html)/i.test(text(0, 64))) return "text/html";
+	return "";
+}
+
+/**
+ * Downloads a picture, GIF or video from a link and keeps it like a chosen file
+ * (so it still shows offline). The desktop app downloads it itself, because
+ * most sites don't let a window read their pictures.
+ */
+export async function backgroundFromLink(link: string): Promise<{ id: string; kind: "image" | "video" }> {
+	const url = link.trim();
+	if (!/^https?:\/\//i.test(url)) throw new Error("Paste a link that starts with http:// or https://");
+	let bytes: Uint8Array<ArrayBuffer>;
+	if ("__TAURI_INTERNALS__" in window) {
+		const { invoke } = await import("@tauri-apps/api/core");
+		bytes = new Uint8Array(await invoke<ArrayBuffer>("fetch_file", { url }));
+	} else {
+		const res = await fetch(url).catch(() => null);
+		if (!res?.ok) throw new Error("Couldn't download that link.");
+		bytes = new Uint8Array(await res.arrayBuffer());
+	}
+	const type = sniff(bytes);
+	if (type === "text/html") throw new Error("That link is a web page, not a picture. Right-click the picture itself and choose “Copy image address”, then paste that.");
+	if (!type) throw new Error("That link isn't a picture, GIF or video Basalt can show.");
+	const name = url.split(/[?#]/)[0].split("/").pop() || "background";
+	return saveBackground(new File([bytes], name, { type }));
+}
+
 /** Forgets a stored file that's no longer used. */
 export async function removeMedia(id: string) {
 	const url = urls.get(id);

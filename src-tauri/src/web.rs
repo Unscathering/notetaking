@@ -23,3 +23,31 @@ pub async fn clip_fetch(url: String) -> Result<String, String> {
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
+
+/** Background pictures and videos from a link can be up to this big. */
+const MAX_FILE_BYTES: usize = 120 * 1024 * 1024;
+
+/// Downloads a picture, GIF or video from a link (for the background), as raw bytes.
+#[tauri::command]
+pub async fn fetch_file(url: String) -> Result<tauri::ipc::Response, String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("That isn't a web address. It should start with http:// or https://".into());
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 Basalt")
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| format!("Couldn't reach that link: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("The link said {}.", res.status()));
+    }
+    if res.content_length().unwrap_or(0) as usize > MAX_FILE_BYTES {
+        return Err("That file is too big. Try one under 120 MB.".into());
+    }
+    let bytes = res.bytes().await.map_err(|e| format!("The download didn't finish: {e}"))?;
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err("That file is too big. Try one under 120 MB.".into());
+    }
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}

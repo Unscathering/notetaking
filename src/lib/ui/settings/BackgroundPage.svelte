@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { GLASS_DEFAULTS, WALLPAPERS } from "../../theme/theme";
-	import { MAX_SECONDS, mediaUrl, removeMedia, saveBackground } from "../../theme/media.svelte";
+	import { MAX_SECONDS, backgroundFromLink, mediaUrl, removeMedia, saveBackground } from "../../theme/media.svelte";
 	import { theme } from "../../theme/store.svelte";
 	import { icon } from "../icons";
 	import MiniApp from "./MiniApp.svelte";
@@ -17,16 +17,28 @@
 		const input = e.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = "";
-		if (!file) return;
+		if (file) await use(() => saveBackground(file));
+	}
+
+	let link = $state("");
+	async function fromLink() {
+		if (!link.trim() || busy) return;
+		if (await use(() => backgroundFromLink(link))) link = "";
+	}
+
+	/** Keeps a picture or video (from a file or a link) and shows it. */
+	async function use(get: () => Promise<{ id: string; kind: "image" | "video" }>) {
 		busy = true;
 		problem = "";
 		try {
 			const old = b.media;
-			const saved = await saveBackground(file);
+			const saved = await get();
 			Object.assign(theme.background, { kind: saved.kind, media: saved.id, mediaKind: saved.kind, image: "" });
 			if (old && old !== saved.id) void removeMedia(old);
+			return true;
 		} catch (err) {
-			problem = err instanceof Error ? err.message : "That file couldn't be used.";
+			problem = err instanceof Error ? err.message : String(err || "That file couldn't be used.");
+			return false;
 		} finally {
 			busy = false;
 		}
@@ -90,10 +102,39 @@
 		<label class="st-ghost">{@html icon("upload", 14)} {own ? "Choose a different file" : "Choose a picture, GIF or video"}<input type="file" accept="image/*,video/mp4,video/webm" hidden onchange={choose} /></label>
 		<span class="hint">{busy ? "Checking…" : `GIFs and videos (MP4 or WebM) can be up to ${MAX_SECONDS} seconds and loop forever. They stay on this computer and pause when Basalt is minimized.`}</span>
 	</div>
+	<form class="link-row" onsubmit={(e) => (e.preventDefault(), fromLink())}>
+		<span class="link-icon">{@html icon("globe", 14)}</span>
+		<input type="url" placeholder="Or paste a link to a picture, GIF or video" bind:value={link} disabled={busy} />
+		<button class="st-ghost" type="submit" disabled={busy || !link.trim()}>{busy && link ? "Downloading…" : "Use link"}</button>
+	</form>
 	{#if problem}<p class="problem">{problem}</p>{/if}
 </section>
 
 <style>
+	.link-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 10px;
+		padding: 4px 4px 4px 10px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--raised);
+	}
+	.link-icon {
+		display: flex;
+		color: var(--muted);
+	}
+	.link-row input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		outline: 0;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 13px;
+	}
 	.wall {
 		padding: 6px;
 		gap: 6px;
