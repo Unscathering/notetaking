@@ -44,7 +44,8 @@ const look = EditorView.theme({
 		caretColor: "var(--accent)",
 	},
 	".cm-line": { padding: "0 2px", transition: "opacity var(--dur) var(--ease)" },
-	".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px", transition: "left 80ms ease-out, top 80ms ease-out" },
+	// The cursor jumps straight to where you type (a glide made it trail behind).
+	".cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
 	"&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--accent-soft) !important" },
 	".cm-placeholder": { color: "var(--muted)" },
 	".cm-h": { color: "var(--heading)", fontFamily: "var(--font-heading)", fontWeight: "var(--heading-weight)", lineHeight: "1.3" },

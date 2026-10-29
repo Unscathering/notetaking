@@ -145,11 +145,21 @@ class PropsWidget extends WidgetType {
 	}
 }
 
+/** A note's header, read once per version of its text (moving the cursor doesn't read it again). */
+const parsed = new WeakMap<EditorState["doc"], { fm: ReturnType<typeof frontmatterRange>; props: NoteProps; bodyTags: string[] }>();
+function header(state: EditorState) {
+	let p = parsed.get(state.doc);
+	if (!p) {
+		const text = state.doc.toString();
+		const fm = frontmatterRange(text);
+		p = { fm, props: readProps(text), bodyTags: readProps(fm ? text.slice(fm.to) : text).tags };
+		parsed.set(state.doc, p);
+	}
+	return p;
+}
+
 function decorate(state: EditorState, hooks: HeaderHooks): DecorationSet {
-	const text = state.doc.toString();
-	const fm = frontmatterRange(text);
-	const props = readProps(text);
-	const bodyTags = readProps(fm ? text.slice(fm.to) : text).tags;
+	const { fm, props, bodyTags } = header(state);
 	const widget = new PropsWidget(props, bodyTags, hooks, state.readOnly);
 	if (!fm) return Decoration.set([Decoration.widget({ widget, block: true, side: -1 }).range(0)]);
 	// Show the raw block while the cursor is inside it.
@@ -162,10 +172,13 @@ export const noteHeader = (hooks: HeaderHooks) =>
 	StateField.define<DecorationSet>({
 		create: (state) => decorate(state, hooks),
 		update(value: DecorationSet, tr: Transaction) {
-			return tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly ? decorate(tr.state, hooks) : value;
+			// The cursor only matters when it goes into or out of the properties block.
+			const fmEnd = header(tr.state).fm?.to ?? -1;
+			const inside = (s: EditorState) => s.selection.main.from < fmEnd - 1;
+			return tr.docChanged || tr.startState.readOnly !== tr.state.readOnly || (tr.selection && inside(tr.startState) !== inside(tr.state)) ? decorate(tr.state, hooks) : value;
 		},
 		provide: (f) => EditorView.decorations.from(f),
 	});
 
 /** Where the note's own text starts, after its properties block. */
-export const bodyStart = (state: EditorState) => frontmatterRange(state.doc.toString())?.to ?? 0;
+export const bodyStart = (state: EditorState) => header(state).fm?.to ?? 0;

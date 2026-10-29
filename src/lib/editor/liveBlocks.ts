@@ -33,6 +33,45 @@ export interface LiveHooks extends WidgetHooks {
 /** Sent when notes change, so live parts redraw. */
 export const refreshLive = StateEffect.define<number>();
 
+/** Opens one ```basalt block as text to edit it (its </> button), or closes it (null). */
+const editBlock = StateEffect.define<{ from: number; to: number } | null>();
+
+/** The block open as text, if any. It closes when the cursor leaves it. */
+const openBlock = StateField.define<{ from: number; to: number } | null>({
+	create: () => null,
+	update(value, tr) {
+		for (const e of tr.effects) if (e.is(editBlock)) return e.value;
+		if (!value) return value;
+		const next = tr.docChanged ? { from: tr.changes.mapPos(value.from, -1), to: tr.changes.mapPos(value.to, 1) } : value;
+		const head = tr.state.selection.main.head;
+		return head < next.from || head > next.to ? null : next;
+	},
+});
+
+/** The </> button on a block: opens it as text, with the cursor in it. */
+function editButton(view: EditorView, dom: HTMLElement) {
+	if (view.state.readOnly) return;
+	const b = el("button", "basalt-edit");
+	b.title = "Edit this block";
+	b.textContent = "</>";
+	b.addEventListener("mousedown", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+	});
+	b.addEventListener("click", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const doc = view.state.doc;
+		const start = doc.lineAt(view.posAtDOM(dom));
+		let end = start.number + 1;
+		while (end <= doc.lines && doc.line(end).text.trim() !== "```") end++;
+		const to = doc.line(Math.min(end, doc.lines)).to;
+		view.dispatch({ effects: editBlock.of({ from: start.from, to }), selection: { anchor: Math.min(to, doc.line(Math.min(start.number + 1, doc.lines)).to) } });
+		view.focus();
+	});
+	dom.append(b);
+}
+
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string) => {
 	const e = document.createElement(tag);
 	if (cls) e.className = cls;
@@ -66,16 +105,17 @@ class RowWidget extends WidgetType {
 	constructor(
 		private source: string,
 		private stamp: number,
-		private hooks: LiveHooks
+		private hooks: LiveHooks,
+		private reading = false
 	) {
 		super();
 	}
 
 	eq(other: RowWidget) {
-		return other.source === this.source && other.stamp === this.stamp;
+		return other.source === this.source && other.stamp === this.stamp && other.reading === this.reading;
 	}
 
-	toDOM() {
+	toDOM(view: EditorView) {
 		const later: Array<() => void> = [];
 		const [head, ...columns] = this.source.split(/^\s*==\s*$/m);
 		const widths = /^\s*columns\s*:\s*(.+)$/im.exec(head)?.[1]?.trim();
@@ -88,6 +128,7 @@ class RowWidget extends WidgetType {
 			row.append(col);
 		}
 		stops.set(row, later);
+		editButton(view, row);
 		return row;
 	}
 
@@ -104,19 +145,21 @@ class QueryWidget extends WidgetType {
 	constructor(
 		private source: string,
 		private stamp: number,
-		private hooks: LiveHooks
+		private hooks: LiveHooks,
+		private reading = false
 	) {
 		super();
 	}
 
 	eq(other: QueryWidget) {
-		return other.source === this.source && other.stamp === this.stamp;
+		return other.source === this.source && other.stamp === this.stamp && other.reading === this.reading;
 	}
 
-	toDOM() {
+	toDOM(view: EditorView) {
 		const later: Array<() => void> = [];
 		const dom = this.draw(later);
 		stops.set(dom, later);
+		editButton(view, dom);
 		return dom;
 	}
 
@@ -296,8 +339,11 @@ class EmbedWidget extends WidgetType {
 function build(state: EditorState, hooks: LiveHooks, stamp: number): DecorationSet {
 	const decos: Range<Decoration>[] = [];
 	const sel = state.selection.main;
-	// In view mode the cursor never opens a block up as text.
+	// Embeds open as text when the cursor is on them; never in view mode.
 	const touches = (from: number, to: number) => !state.readOnly && sel.from <= to && sel.to >= from;
+	// Blocks stay drawn wherever the cursor goes, unless opened with their </> button.
+	const open = state.readOnly ? null : state.field(openBlock, false);
+	const opened = (from: number, to: number) => !!open && open.from <= to && open.to >= from;
 	const doc = state.doc;
 	for (let n = 1; n <= doc.lines; n++) {
 		const line = doc.line(n);
@@ -309,7 +355,7 @@ function build(state: EditorState, hooks: LiveHooks, stamp: number): DecorationS
 			if (end > doc.lines) break;
 			const from = line.from, to = doc.line(end).to;
 			const source = state.sliceDoc(doc.line(n + 1).from, doc.line(end).from);
-			if (!touches(from, to)) decos.push(Decoration.replace({ widget: isRow(source) ? new RowWidget(source, stamp, hooks) : new QueryWidget(source, stamp, hooks), block: true }).range(from, to));
+			if (!opened(from, to)) decos.push(Decoration.replace({ widget: isRow(source) ? new RowWidget(source, stamp, hooks, state.readOnly) : new QueryWidget(source, stamp, hooks, state.readOnly), block: true }).range(from, to));
 			n = end;
 			continue;
 		}
@@ -327,13 +373,18 @@ export const liveBlocks = (hooks: LiveHooks) => {
 	});
 	const decos = StateField.define<DecorationSet>({
 		create: (state) => build(state, hooks, 0),
-		update: (value, tr) => (tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly || tr.effects.some((e) => e.is(refreshLive)) ? build(tr.state, hooks, tr.state.field(stamp)) : value),
+		update: (value, tr) =>
+			tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly || tr.startState.field(openBlock, false) !== tr.state.field(openBlock, false) || tr.effects.some((e) => e.is(refreshLive)) ? build(tr.state, hooks, tr.state.field(stamp)) : value,
 		provide: (f) => EditorView.decorations.from(f),
 	});
-	return [stamp, decos, look];
+	return [openBlock, stamp, decos, look];
 };
 
 const look = EditorView.theme({
+	".basalt-block, .basalt-row": { position: "relative" },
+	".basalt-edit": { position: "absolute", top: "6px", right: "6px", zIndex: "3", padding: "2px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--raised)", color: "var(--muted)", font: "11px var(--font-code)", cursor: "pointer", opacity: "0", transition: "opacity var(--dur) var(--ease)" },
+	".basalt-block:hover > .basalt-edit, .basalt-row:hover > .basalt-edit": { opacity: "1" },
+	".basalt-edit:hover": { color: "var(--accent)", borderColor: "var(--accent)" },
 	".basalt-block, .basalt-embed": { margin: "8px 0 12px", fontFamily: "var(--font-ui)", fontSize: "0.92em", lineHeight: "1.5" },
 	".basalt-title": { marginBottom: "6px", color: "var(--heading)", fontWeight: "650", fontSize: "1.05em" },
 	".basalt-warn": { marginBottom: "6px", color: "#e5a84b", fontSize: "0.85em" },

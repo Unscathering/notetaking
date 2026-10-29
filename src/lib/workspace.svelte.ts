@@ -15,7 +15,7 @@ import {
 	type EntryLook,
 } from "./cave";
 import { readProps, type NoteProps } from "./notes";
-import { newBoardText } from "./board";
+import { isBoardText, newBoardText } from "./board";
 
 export type Panel = "files" | "search" | "tags" | "outline";
 /** Tabs that aren't notes: the graph and other whole-cave views. */
@@ -26,7 +26,10 @@ export const VIEWS: Record<string, { label: string; icon: IconName }> = {
 export const isView = (path: string) => path.startsWith("basalt:");
 /** A view tab's name and icon ("basalt:db:Projects" is the Projects folder as a database). */
 export const viewInfo = (path: string): { label: string; icon: IconName } | null =>
-	VIEWS[path] ?? (path.startsWith("basalt:db:") ? { label: path.slice(10).split("/").pop() || "All notes", icon: "table" } : null);
+	VIEWS[path] ??
+	(path.startsWith("basalt:db:") ? { label: path.slice(10).split("/").pop() || "All notes", icon: "table" } : path.startsWith("basalt:new") ? { label: "New tab", icon: "plus" } : null);
+/** An empty tab, waiting for a note (the + on the tab bar). */
+export const isNewTab = (path: string | null) => !!path?.startsWith("basalt:new");
 
 export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups" | "history" | "clip";
 
@@ -118,9 +121,19 @@ class Workspace {
 	/** Every note's details, kept up to date as notes change. */
 	props = $derived.by(() => {
 		const out = new Map<string, NoteProps>();
-		for (const [p, t] of this.texts) out.set(p, readProps(t));
+		// Only notes whose text changed are read again (typing changes one note at a time).
+		for (const [p, t] of this.texts) {
+			const known = this.propsCache.get(p);
+			if (known?.text === t) out.set(p, known.props);
+			else {
+				const props = readProps(t);
+				this.propsCache.set(p, { text: t, props });
+				out.set(p, props);
+			}
+		}
 		return out;
 	});
+	private propsCache = new Map<string, { text: string; props: NoteProps }>();
 	/** tag → notes with it, most used first. */
 	tags = $derived.by(() => {
 		const out = new Map<string, string[]>();
@@ -225,18 +238,54 @@ class Workspace {
 		await this.cave?.writeMeta($state.snapshot(this.meta) as CaveMeta);
 	}
 
-	async open(path: string) {
+	/** Where you've been, for back and forward. */
+	nav: string[] = $state([]);
+	navAt = $state(-1);
+
+	/**
+	 * Opens a note or view. A note takes the place of the note in the current
+	 * tab, like Obsidian; views (graph, calendar, a folder's table) and boards
+	 * get a tab of their own, and so does anything opened with `newTab`.
+	 */
+	async open(path: string, { newTab = false, fromHistory = false } = {}) {
 		if (!this.cave) return;
 		if (!isView(path) && !this.texts.has(path)) this.texts.set(path, await this.cave.read(path));
 		if (!this.tabs.includes(path)) {
-			const at = this.active ? this.tabs.indexOf(this.active) + 1 : this.tabs.length;
-			this.tabs = [...this.tabs.slice(0, at), path, ...this.tabs.slice(at)];
+			const cur = this.active;
+			const ownTab = (p: string) => (isView(p) && !isNewTab(p)) || isBoardText(this.texts.get(p) ?? "");
+			if (cur && !newTab && !ownTab(path) && !ownTab(cur)) this.tabs = this.tabs.map((t) => (t === cur ? path : t));
+			else {
+				const at = cur ? this.tabs.indexOf(cur) + 1 : this.tabs.length;
+				this.tabs = [...this.tabs.slice(0, at), path, ...this.tabs.slice(at)];
+			}
 		}
 		this.active = path;
+		if (!fromHistory && !isNewTab(path) && this.nav[this.navAt] !== path) {
+			this.nav = [...this.nav.slice(0, this.navAt + 1), path].slice(-100);
+			this.navAt = this.nav.length - 1;
+		}
 		if (isView(path)) return;
 		this.recent = path;
 		// Show where the note lives in the sidebar.
 		for (let f = parentOf(path); f; f = parentOf(f)) this.openFolders.add(f);
+	}
+
+	/** Back to where you were before (or forward again). */
+	async go(step: -1 | 1) {
+		let at = this.navAt + step;
+		// Skip places that are gone (a deleted note).
+		while (at >= 0 && at < this.nav.length && !isView(this.nav[at]) && !this.files.includes(this.nav[at])) at += step;
+		if (at < 0 || at >= this.nav.length) return;
+		this.navAt = at;
+		await this.open(this.nav[at], { fromHistory: true });
+	}
+
+	/** An empty new tab, like Obsidian's: open a note into it, or make one. */
+	newTab() {
+		const path = `basalt:new:${Date.now()}`;
+		const at = this.active ? this.tabs.indexOf(this.active) + 1 : this.tabs.length;
+		this.tabs = [...this.tabs.slice(0, at), path, ...this.tabs.slice(at)];
+		this.active = path;
 	}
 
 	closeTab(path: string) {
