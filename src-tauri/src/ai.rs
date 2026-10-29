@@ -28,6 +28,8 @@ use tokio::io::AsyncWriteExt;
 pub struct Server {
     child: Mutex<Option<Child>>,
     port: Mutex<u16>,
+    /// The model file it has loaded, to check it's the one asked for.
+    model: Mutex<String>,
     cancel_chat: AtomicBool,
 }
 
@@ -38,6 +40,7 @@ impl Server {
             let _ = child.wait();
         }
         *self.port.lock().unwrap() = 0;
+        self.model.lock().unwrap().clear();
     }
 }
 
@@ -94,6 +97,8 @@ pub struct Status {
     ram_mb: u64,
     running: bool,
     folder: String,
+    /// The model file the main engine has loaded ("" when it's asleep).
+    loaded: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -175,6 +180,7 @@ pub async fn ai_status(app: AppHandle, engine: State<'_, Engine>) -> Result<Stat
         models,
         ram_mb: sys.total_memory() / 1_048_576,
         running: *engine.main.port.lock().unwrap() != 0,
+        loaded: engine.main.model.lock().unwrap().clone(),
         folder: dir.to_string_lossy().into_owned(),
     })
 }
@@ -617,6 +623,7 @@ pub async fn ai_start(
         if let Ok(res) = http.get(format!("http://127.0.0.1:{port}/health")).send().await {
             if res.status().is_success() {
                 *server.port.lock().unwrap() = port;
+                *server.model.lock().unwrap() = Path::new(&model).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 return Ok(port);
             }
         }

@@ -289,10 +289,14 @@ export async function setProject(folder: string) {
 
 /** What goes with the latest message: where the user is, and notes that may help. */
 function aboutNow(found: Found[]): string {
-	const notes = found.length
+	return `${context()}${foundNotes(found)}`;
+}
+
+/** The notes found for a message, as the AI gets them. */
+export function foundNotes(found: Found[]): string {
+	return found.length
 		? `\n\nNotes that may help with the latest message (found by searching the cave; read_note gives the whole note):\n${found.map((f) => `--- [[${noteTitle(f.path)}]] (${f.path}) ---\n${f.excerpt}`).join("\n\n")}`
 		: "";
-	return `${context()}${notes}`;
 }
 
 /**

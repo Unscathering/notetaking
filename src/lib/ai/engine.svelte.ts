@@ -148,6 +148,12 @@ export async function useModel(file: string) {
 	remember();
 }
 
+/** The model file the main engine really has loaded ("" if it's asleep, or outside the desktop app). */
+export async function loadedModel(): Promise<string> {
+	if (!inDesktopApp) return ai.model;
+	return (await invoke<{ loaded?: string }>("ai_status")).loaded ?? "";
+}
+
 /** Picks the model for writing help ("" for the main one). */
 export async function useWriterModel(file: string) {
 	await stop();

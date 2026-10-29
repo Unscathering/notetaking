@@ -8,8 +8,9 @@
 // are only scored, never carried out. The real instructions, tools and
 // request sorting are used, so the score reflects real use.
 import { TOOLS, WRITES, groupOf, look, toolsFor, type Group } from "./tools";
-import { instructions, sortRequest } from "./agent.svelte";
-import { ai, stopAnswer, stream, useModel } from "./engine.svelte";
+import { foundNotes, instructions, sortRequest } from "./agent.svelte";
+import { ai, loadedModel, stop, stopAnswer, stream, useModel, wake } from "./engine.svelte";
+import { recall } from "./recall";
 import { clean, request } from "./proofread";
 import { parseSpec } from "../query";
 import { inDesktopApp } from "../cave";
@@ -100,6 +101,9 @@ interface Outcome {
 	calls: Call[];
 	text: string;
 }
+
+/** Whether the answer names a note as its source: linked in the text, or opened (Basalt lists opened notes as sources). */
+const cites = (o: Outcome, note: string) => new RegExp(`\\[\\[${note}`, "i").test(o.text) || o.calls.some((c) => c.name === "read_note" && named(c.args.path, note));
 /** 0 to 1, and why points were lost. */
 type Score = { score: number; notes: string[] };
 
@@ -111,8 +115,8 @@ interface Job {
 	area: Area;
 	/** What's asked, as the user would. */
 	ask: string;
-	/** For grammar jobs: the text and the right answer. */
-	grammar?: { text: string; right: string };
+	/** For grammar jobs: the text and the right answers (any of them counts). */
+	grammar?: { text: string; right: string[] };
 	score?: (o: Outcome) => Score;
 }
 
@@ -226,12 +230,14 @@ const JOBS: Job[] = [
 		ask: "Turn my Cell notes into a dashboard that shows my open tasks and what's due this week.",
 		score: (o) => {
 			const d = calls(o, "create_dashboard").find((c) => named(c.args.path, "cell notes"));
-			const sections = (Array.isArray(d?.args.sections) ? d.args.sections : []).map(lc);
+			// A new dashboard note still earns the points for what it shows.
+			const any = d ?? calls(o, "create_dashboard")[0];
+			const sections = (Array.isArray(any?.args.sections) ? any.args.sections : []).map(lc);
 			const blocks = calls(o, "add_live_block").filter((c) => named(c.args.path, "cell notes"));
 			const tasks = sections.includes("tasks") || blocks.some((c) => lc(c.args.list) === "tasks" && !c.args.due);
 			const week = sections.includes("due_this_week") || blocks.some((c) => lc(c.args.due) === "week");
 			return tally([
-				[!!d || blocks.length > 0, "It didn't make Cell notes a dashboard"],
+				[!!d || blocks.length > 0, any ? "It made a new dashboard note instead of turning Cell notes into one" : "It didn't make Cell notes a dashboard"],
 				[tasks, "No open tasks list"],
 				[week, "No due-this-week list"],
 				[!o.plan.some((c) => c.name === "edit_note" && named(c.args.path, "cell notes")), "It rewrote the note instead of adding to it"],
@@ -298,19 +304,19 @@ const JOBS: Job[] = [
 		id: "grammar1",
 		area: "writing",
 		ask: "Grammar: “yesterday me and my freind goes…”",
-		grammar: { text: "yesterday me and my freind goes to the libary to study for are test.", right: "Yesterday my friend and I went to the library to study for our test." },
+		grammar: { text: "yesterday me and my freind goes to the libary to study for are test.", right: ["Yesterday my friend and I went to the library to study for our test.", "Yesterday, my friend and I went to the library to study for our test."] },
 	},
 	{
 		id: "grammar2",
 		area: "writing",
 		ask: "Grammar: “The meeting went fine, i think…”",
-		grammar: { text: "The meeting went fine, i think we should of started earlier though. Its hard to focus after lunch.", right: "The meeting went fine, I think we should have started earlier though. It's hard to focus after lunch." },
+		grammar: { text: "The meeting went fine, i think we should of started earlier though. Its hard to focus after lunch.", right: ["The meeting went fine, I think we should have started earlier though. It's hard to focus after lunch.", "The meeting went fine; I think we should have started earlier, though. It's hard to focus after lunch.", "The meeting went fine. I think we should have started earlier, though. It's hard to focus after lunch.", "The meeting went fine, I think we should have started earlier, though. It's hard to focus after lunch."] },
 	},
 	{
 		id: "grammar3",
 		area: "writing",
 		ask: "Grammar: a sentence with nothing wrong (should stay as it is)",
-		grammar: { text: "The garden looks lovely this spring, and the tomatoes are finally growing.", right: "The garden looks lovely this spring, and the tomatoes are finally growing." },
+		grammar: { text: "The garden looks lovely this spring, and the tomatoes are finally growing.", right: ["The garden looks lovely this spring, and the tomatoes are finally growing."] },
 	},
 	{
 		id: "exam",
@@ -318,7 +324,7 @@ const JOBS: Job[] = [
 		ask: "When is my biology exam?",
 		score: (o) => tally([
 			[/14|fourteenth/.test(o.text) && /nov|11-14|11\/14/i.test(o.text), "It didn't give the right date (November 14)"],
-			[/\[\[cell notes/i.test(o.text), "It didn't link the note it came from"],
+			[cites(o, "cell notes"), "It didn't say which note it came from"],
 			[!o.plan.length, "It planned changes for a question"],
 		]),
 	},
@@ -329,7 +335,7 @@ const JOBS: Job[] = [
 		score: (o) => tally([
 			[/march 3|3 march|march 3rd/i.test(o.text), "It missed the launch date (March 3)"],
 			[/photo/i.test(o.text) && /about/i.test(o.text), "It missed who does what"],
-			[/\[\[meeting with sam/i.test(o.text), "It didn't link the note it came from"],
+			[cites(o, "meeting with sam"), "It didn't say which note it came from"],
 			[!o.plan.length, "It planned changes for a question"],
 		]),
 	},
@@ -366,6 +372,8 @@ export interface JobResult {
 	score: number;
 	notes: string[];
 	seconds: number;
+	/** What the model did, for jobs that lost points: its actions and the start of its reply. */
+	did?: string;
 }
 
 export interface TestRun {
@@ -379,9 +387,12 @@ export interface TestRun {
 	/** Words written per second, as the engine reported it. */
 	wordsPerSecond: number;
 	jobs: JobResult[];
+	/** The model file the engine really had loaded, if it could tell. */
+	servedBy?: string;
 }
 
-const KEY = "basalt.ai-tests";
+// "-2": scored with notes up front and sources counted, as in a real chat.
+const KEY = "basalt.ai-tests-2";
 /** Each job gets this long before it counts as failed. */
 const JOB_LIMIT_S = 240;
 
@@ -437,7 +448,9 @@ const timing = (d: Record<string, unknown>) => {
 async function converse(job: Job): Promise<Outcome> {
 	const groups: Group[] = await sortRequest(job.ask, "", []).catch(() => []);
 	const tools = toolsFor(groups);
-	const cave = `Cave: Practice (${Object.keys(NOTES).length} notes, ${FOLDERS.length} folders).\nNo note is open.`;
+	// As in a real chat, the notes that best match the message come with it.
+	const found = recall(new Map(Object.entries(NOTES)), job.ask, title, 3);
+	const cave = `Cave: Practice (${Object.keys(NOTES).length} notes, ${FOLDERS.length} folders).\nNo note is open.${foundNotes(found)}`;
 	type Msg = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
 	const messages: Msg[] = [
 		{ role: "system", content: instructions("") },
@@ -512,7 +525,7 @@ function wordEdits(a: string, b: string): number {
 	return prev[y.length];
 }
 
-async function grammar(job: Job): Promise<Score> {
+async function grammar(job: Job): Promise<Score & { got: string }> {
 	const { text, right } = job.grammar!;
 	let answer = "";
 	await stream(request("grammar", [text]), (d) => {
@@ -520,10 +533,17 @@ async function grammar(job: Job): Promise<Score> {
 		answer += (d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? "";
 	}, "main");
 	const got = clean(answer, text).split("\n").join(" ").trim();
-	const needed = wordEdits(text, right);
-	const off = wordEdits(got, right);
-	if (!needed) return off ? { score: 0, notes: [`It changed a sentence that had nothing wrong: “${got}”`] } : { score: 1, notes: [] };
-	return { score: Math.max(0, 1 - off / needed), notes: off ? [`Got “${got}”`] : [] };
+	const needed = wordEdits(text, right[0]);
+	const off = Math.min(...right.map((r) => wordEdits(got, r)));
+	if (!needed) return off ? { score: 0, notes: ["It changed a sentence that had nothing wrong"], got } : { score: 1, notes: [], got };
+	return { score: Math.max(0, 1 - off / needed), notes: off ? [`${off} ${off === 1 ? "word differs" : "words differ"} from a right answer`] : [], got };
+}
+
+/** What a conversation job did, in short, to show under a miss. */
+function did(o: Outcome): string {
+	const acts = o.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1).slice(0, 140)})`);
+	const reply = o.text.trim().replace(/\s+/g, " ").slice(0, 220);
+	return [acts.length ? `Did: ${acts.join(" → ")}` : "Did: nothing", reply ? `Said: “${reply}${o.text.trim().length > 220 ? "…" : ""}”` : ""].filter(Boolean).join("\n");
 }
 
 /** Live numbers for the run going on: how far, how well so far, and how long is left. */
@@ -559,6 +579,14 @@ async function testModel(): Promise<TestRun> {
 	bench.of = JOBS.length;
 	bench.done = [];
 	bench.modelStarted = Date.now();
+	// Make sure the engine really has this model loaded (and restart it once if not).
+	await wake();
+	let servedBy = await loadedModel().catch(() => "");
+	if (servedBy && servedBy !== ai.model) {
+		await stop();
+		await wake();
+		servedBy = await loadedModel().catch(() => "");
+	}
 	for (const [i, job] of JOBS.entries()) {
 		if (bench.cancelled) break;
 		bench.job = i + 1;
@@ -566,14 +594,23 @@ async function testModel(): Promise<TestRun> {
 		const t0 = performance.now();
 		const limit = setTimeout(stopAnswer, JOB_LIMIT_S * 1000);
 		let s: Score;
+		let what = "";
 		try {
-			s = job.grammar ? await grammar(job) : job.score!(await converse(job));
+			if (job.grammar) {
+				const g = await grammar(job);
+				s = g;
+				what = `Got: “${g.got}”`;
+			} else {
+				const o = await converse(job);
+				s = job.score!(o);
+				what = did(o);
+			}
 		} catch (e) {
 			s = { score: 0, notes: [e instanceof Error ? e.message : String(e)] };
 		} finally {
 			clearTimeout(limit);
 		}
-		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000 });
+		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000, ...(s.score < 1 && what ? { did: what } : {}) });
 		bench.done = [...results];
 	}
 	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];
@@ -590,6 +627,7 @@ async function testModel(): Promise<TestRun> {
 		seconds: results.reduce((n, x) => n + x.seconds, 0) / Math.max(1, results.length),
 		wordsPerSecond: perSecond.length ? perSecond.reduce((a, b) => a + b, 0) / perSecond.length : 0,
 		jobs: results,
+		servedBy,
 	};
 }
 

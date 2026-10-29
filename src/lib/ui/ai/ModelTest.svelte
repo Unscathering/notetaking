@@ -72,6 +72,9 @@
 						<span class="meta">{r.seconds.toFixed(r.seconds < 10 ? 1 : 0)} s a job{r.wordsPerSecond ? ` · ${Math.round(r.wordsPerSecond)} words/s` : ""}</span>
 						<span class="chev" class:down={open === r.model}>{@html icon("chevron", 12)}</span>
 					</button>
+					{#if r.servedBy && r.servedBy !== r.model}
+						<p class="wrong">{@html icon("alert", 12)} The engine had {label(r.servedBy)} loaded, not {label(r.model)}, so this result is really about {label(r.servedBy)}. Test it again.</p>
+					{/if}
 					<div class="areas">
 						{#each Object.entries(r.byArea) as [a, n] (a)}
 							<span title={AREAS[a as Area]}><em class="score-{tone(n ?? 0)}" style="width: {n}%"></em><i>{AREAS[a as Area]}</i><b>{n}</b></span>
@@ -86,6 +89,7 @@
 										<span class="ask">{j.ask}</span>
 										<span class="sec">{j.seconds.toFixed(j.seconds < 10 ? 1 : 0)} s</span>
 										{#each j.notes as n, i (i)}<small>{n}</small>{/each}
+										{#if j.did}<code class="did">{j.did}</code>{/if}
 									</div>
 								</li>
 							{/each}
@@ -385,6 +389,27 @@
 		flex-basis: 100%;
 		color: var(--muted);
 		font-size: 11px;
+		line-height: 1.4;
+	}
+	.did {
+		flex-basis: 100%;
+		margin-top: 2px;
+		padding: 5px 7px;
+		border-radius: 5px;
+		background: color-mix(in srgb, var(--muted) 10%, transparent);
+		color: var(--muted);
+		font-family: var(--font-code);
+		font-size: 10.5px;
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.wrong {
+		display: flex;
+		gap: 6px;
+		margin: 8px 0 0;
+		color: #e5a84b;
+		font-size: 11.5px;
 		line-height: 1.4;
 	}
 	.foot {
