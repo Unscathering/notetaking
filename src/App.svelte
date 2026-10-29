@@ -12,6 +12,7 @@
 	import BoardView from "./lib/ui/BoardView.svelte";
 	import GraphView from "./lib/ui/GraphView.svelte";
 	import CalendarView from "./lib/ui/CalendarView.svelte";
+	import DatabaseView from "./lib/ui/DatabaseView.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -27,7 +28,7 @@
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
 	import { noteTitle, pickCave } from "./lib/cave";
-	import { VIEWS, startWorkspace, ws } from "./lib/workspace.svelte";
+	import { startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
 	import { mediaUrl } from "./lib/theme/media.svelte";
 
@@ -127,7 +128,7 @@
 				{#each ws.tabs as path (path)}
 					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} in:fly={{ y: 8, duration: ms, easing: cubicOut }} role="tab" aria-selected={ws.active === path}>
 						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
-							{#if VIEWS[path]}<span class="tab-ico">{@html icon(VIEWS[path].icon, 13)}</span>{VIEWS[path].label}{:else}{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}{/if}
+							{#if viewInfo(path)}<span class="tab-ico">{@html icon(viewInfo(path)!.icon, 13)}</span>{viewInfo(path)!.label}{:else}{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}{/if}
 						</button>
 						<button class="tab-close" onclick={() => ws.closeTab(path)} title="Close (Ctrl+W)">{@html icon("x", 14)}</button>
 					</div>
@@ -146,6 +147,8 @@
 				<GraphView {ms} />
 			{:else if ws.active === "basalt:calendar"}
 				<CalendarView {ms} />
+			{:else if ws.active?.startsWith("basalt:db:")}
+				{#key ws.active}<DatabaseView folder={ws.active.slice(10)} {ms} />{/key}
 			{:else if ws.active && showingBoard}
 				<BoardView path={ws.active} {ms} />
 			{:else if ws.active}

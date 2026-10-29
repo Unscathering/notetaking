@@ -24,6 +24,9 @@ export const VIEWS: Record<string, { label: string; icon: IconName }> = {
 	"basalt:calendar": { label: "Calendar", icon: "calendar" },
 };
 export const isView = (path: string) => path.startsWith("basalt:");
+/** A view tab's name and icon ("basalt:db:Projects" is the Projects folder as a database). */
+export const viewInfo = (path: string): { label: string; icon: IconName } | null =>
+	VIEWS[path] ?? (path.startsWith("basalt:db:") ? { label: path.slice(10).split("/").pop() || "All notes", icon: "table" } : null);
 
 export type Modal = "palette" | "switcher" | "templates" | "caves" | "settings" | "backups" | "history";
 

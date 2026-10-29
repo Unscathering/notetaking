@@ -84,6 +84,11 @@ check again before a public launch.
   blocks and `editor/liveBlocks.ts` draws them and `![[embeds]]`, with
   `liveHooks.ts` connecting them to the cave. `Cave.listDir` lists hidden
   folders.
+- `basalt:db:<folder>` is `ui/DatabaseView.svelte`: a folder's notes as a
+  table (properties as columns, edited in place through `writeProps`),
+  gallery, or board grouped by a property. `viewInfo` names view tabs.
+- `ui/OutlinePanel.svelte`: the sidebar's outline (headings, reading time,
+  `goal:` words); the editor reports the cursor line as `ws.cursorLine`.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

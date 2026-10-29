@@ -66,6 +66,7 @@ export const COMMANDS: Command[] = [
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.note && ws.setHome(ws.note) },
 	{ id: "history", label: "History of this note", icon: "clock", run: () => (ws.note || ws.recent ? ws.showHistory(ws.note ?? ws.recent) : alert("Open a note first.")) },
 	{ id: "graph", label: "Open the graph", icon: "graph", run: () => ws.open("basalt:graph") },
+	{ id: "database", label: "This folder as a database", icon: "table", run: () => { const p = ws.note ?? ws.recent; void ws.open(`basalt:db:${p && p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : ""}`); } },
 	{ id: "calendar", label: "Open the calendar", icon: "calendar", run: () => ws.open("basalt:calendar") },
 	{ id: "recap", label: "Recap last week with the AI", icon: "sparkles", run: () => { const d = new Date(); void recap(new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) - 7)); } },
 	{

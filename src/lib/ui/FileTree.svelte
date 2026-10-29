@@ -96,6 +96,7 @@
 						{ label: "New board here", icon: "board", run: () => ws.newBoard(entry.path) },
 						{ label: "New folder here", icon: "folderPlus", run: async () => { const p = await ws.newFolder(entry.path); if (p) ws.renaming = p; } },
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
+						{ label: "Open as a database", icon: "table", run: () => ws.open(`basalt:db:${entry.path}`) },
 						{ label: "-" },
 						...looks,
 						{ label: "-" },
