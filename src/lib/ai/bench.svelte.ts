@@ -61,9 +61,9 @@ function practiceLook(tool: string, a: Record<string, unknown>): string {
 			return p ? `${p}:\n\n${NOTES[p]}` : `There's no note called "${String(a.path ?? "")}". Use list_cave to see what exists.`;
 		}
 		case "search_notes": {
-			const words = String(a.query ?? "").toLowerCase().split(/\W+/).filter((w) => w.length > 2);
-			const hits = Object.entries(NOTES).filter(([p, t]) => words.some((w) => `${p} ${t}`.toLowerCase().includes(w)));
-			return hits.length ? hits.slice(0, 5).map(([p, t]) => `${p}:\n${t.slice(0, 300)}`).join("\n\n") : "Nothing found.";
+			// The same search as Basalt's (tools.ts), over the practice notes.
+			const hits = recall(new Map(Object.entries(NOTES)), String(a.query ?? ""), title, 6);
+			return hits.length ? hits.map((h) => `${h.path}:\n${h.excerpt.slice(0, 300)}`).join("\n\n") : "Nothing found.";
 		}
 		case "list_tags":
 			return "#breakfast: Pancakes\n#dinner: Tomato soup";
@@ -959,7 +959,7 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 		} finally {
 			clearTimeout(limit);
 		}
-		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000, ...(s.score < 1 && what ? { did: what } : {}) });
+		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000, ...((s.score < 1 || performance.now() - t0 > 15000) && what ? { did: what } : {}) });
 		bench.done = [...results];
 	}
 	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];

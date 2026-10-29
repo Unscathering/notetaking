@@ -13,7 +13,8 @@ export function terms(text: string): string[] {
 	return [...new Set(words.filter((w) => w.length > 2 && !STOP.has(w)).map(stem))];
 }
 
-const stem = (w: string) => w.replace(/(ing|ed|es|s)$/, "").replace(/(.)\1$/, "$1") || w;
+// "groceries" and "grocerys" → "grocery", like "grocery" itself; "parties" → "party".
+const stem = (w: string) => (w.length > 4 && /[^aeiou](ies|ys)$/.test(w) ? w.replace(/(ies|ys)$/, "y") : w.replace(/(ing|ed|es|s)$/, "").replace(/(.)\1$/, "$1")) || w;
 
 export interface Found {
 	path: string;
@@ -27,7 +28,8 @@ export interface Found {
  * (a project's folder) get a head start.
  */
 export function recall(texts: Map<string, string>, question: string, title: (p: string) => string, limit = 3, prefer = ""): Found[] {
-	const want = terms(question);
+	// Matched as the start of a word in the text: "grocery" is looked for as "grocer", to find "groceries" too.
+	const want = terms(question).map((w) => (w.length >= 5 && w.endsWith("y") ? w.slice(0, -1) : w));
 	if (!want.length) return [];
 	// How many notes each word appears in: a word in every note says little.
 	const docs = [...texts].map(([path, text]) => ({ path, text, lower: text.toLowerCase(), name: title(path).toLowerCase() }));

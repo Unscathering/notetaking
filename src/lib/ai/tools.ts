@@ -690,14 +690,18 @@ function liveBlock(a: Args): string {
 
 /**
  * A live list by a tag no note has, where a folder has that name ("tag:
- * recipe" with a Recipes folder), is meant to list the folder: it's put right
- * before it's checked. Shared with the model test.
+ * recipe" with a Recipes folder), is meant to list the folder, and so is a
+ * list that names nothing to list by but is titled like a folder: they're put
+ * right before they're checked. Shared with the model test.
  */
 export function fixLiveBlock(a: Args, tagUsed: (tag: string) => boolean, folders: string[]): Args {
+	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
+	const folderNamed = (name: string) => folders.find((f) => stem(f.split("/").pop()!) === stem(name));
+	// A list of notes that names nothing to list by, titled like a folder ("Recipes"), lists that folder.
+	if (!str(a.from) && !str(a.tag) && !str(a.where) && !str(a.search) && ["", "notes"].includes(str(a.list)) && str(a.title) && folderNamed(str(a.title))) return { ...a, from: folderNamed(str(a.title)) };
 	const tag = str(a.tag).replace(/^#/, "").toLowerCase();
 	if (!tag || tagUsed(tag) || str(a.from)) return a;
-	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
-	const folder = folders.find((f) => stem(f.split("/").pop()!) === stem(tag));
+	const folder = folderNamed(tag);
 	if (!folder) return a;
 	const { tag: _, ...rest } = a;
 	return { ...rest, from: folder, list: str(a.list) === "tags" ? "notes" : a.list };
