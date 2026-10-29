@@ -123,14 +123,28 @@ check again before a public launch.
   `tools.ts` is everything the AI can do: looking around runs straight away,
   changes become a plan the user approves, each with its own undo. `check`
   turns down changes that can't work (blank or made-up names) before they
-  reach the plan, and the look tools are only offered when the user asks
-  about the look. `agent.svelte.ts` runs the conversation (live steps the
+  reach the plan. Tools come in groups (`GROUPS`): before each message a
+  tiny request (`sortRequest` in `agent.svelte.ts`, JSON-constrained) plus
+  the message's words pick the groups, so a small model chooses from about
+  10 tools instead of 25; the look tools are only offered when the user asks
+  about the look. Big jobs are one tool each (`create_space`,
+  `create_dashboard`, `create_project`, `create_snippet`…) and Basalt writes
+  the result. `basalt_help` looks things up in this repo's MODDING.md
+  (`manual.ts`). `agent.svelte.ts` runs the conversation (live steps the
   user can open, no repeated calls, at most two memories a message, older
   messages trimmed to fit the engine's `CONTEXT`) and the memory note
   (`.basalt/ai/memory.md` in the cave, hidden from the sidebar). It also
   keeps saved chats (`.basalt/ai/chats/`, listed in `.basalt/ai/chats.json`)
   and projects: a chat can belong to a folder, whose chats share a memory in
   `.basalt/ai/projects/`. The speed test is `speedTest` in `writer.ts`.
+  Speed: the system prompt holds only what rarely changes (what changes per
+  message goes with the message), chats use engine slot 0 and the sorting
+  slot 1, and slot 0 is saved to the app folder's `cache` after the first
+  answer of each wake and restored on the next (`ai_cache`). The engine
+  starts with `--spec-type ngram-mod` (plus `draft-mtp` for MTP models),
+  and starts again without these if it won't start with them. Writing help
+  can have its own model (a second engine, `slot: "writer"`); mixture-of-
+  experts models move experts to normal memory with `--n-cpu-moe`.
   The panel is `ui/ai/AiPanel.svelte`. In a browser, setting
   `localStorage["basalt.ai-dev-url"]` to an OpenAI-style server (or "setup")
   lets you try it without the desktop app.

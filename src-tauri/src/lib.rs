@@ -46,6 +46,7 @@ pub fn run() {
             ai::ai_delete_model,
             ai::ai_add_model,
             ai::ai_start,
+            ai::ai_cache,
             ai::ai_stop,
             ai::ai_chat,
             ai::ai_stop_chat,

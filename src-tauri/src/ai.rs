@@ -546,11 +546,26 @@ pub async fn ai_start(
     device: Option<String>,
     cpu_moe: Option<u32>,
     slot: Option<String>,
+    speedups: Option<bool>,
+    mtp: Option<bool>,
 ) -> Result<u16, String> {
     let server = engine.server(slot.as_deref());
     server.stop();
     let exe = find_server(&root(&app)?.join("engine")).ok_or("The AI engine isn't installed yet.")?;
     let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
+    let mut extra: Vec<String> = Vec::new();
+    if speedups.unwrap_or(false) {
+        let cache = root(&app)?.join("cache");
+        let _ = std::fs::create_dir_all(&cache);
+        // Where the start of a chat (the instructions and tools) is saved between naps.
+        extra.extend(["--slot-save-path".into(), cache.to_string_lossy().into_owned()]);
+        // Recent chats kept in normal memory for quick reuse (the default, 8 GB, is a lot next to a big model).
+        extra.extend(["--cache-ram".into(), "2048".into()]);
+        // Guessing ahead: text the answer repeats (like a paragraph being fixed) is checked
+        // many words at a time; models with their own guessing heads (MTP) use those too.
+        let spec = if mtp.unwrap_or(false) { "draft-mtp,ngram-mod" } else { "ngram-mod" };
+        extra.extend(["--spec-type".into(), spec.into()]);
+    }
     let child = quiet(
         Command::new(&exe)
             .args(["-m", &model, "--host", "127.0.0.1", "--port", &port.to_string()])
@@ -559,6 +574,7 @@ pub async fn ai_start(
             .args(["-ctk", "q8_0"])
             // Long answers on a slow PC can take a while; don't cut them off (the default is 10 minutes).
             .args(["--timeout", "3600"])
+            .args(&extra)
             .args(cpu_moe.filter(|&n| n > 0).map(|n| vec!["--n-cpu-moe".to_string(), n.to_string()]).unwrap_or_default())
             // Only the chosen graphics card, not the one built into the processor.
             .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
@@ -588,6 +604,30 @@ pub async fn ai_start(
     }
     server.stop();
     Err("The AI engine took too long to start.".into())
+}
+
+/// Saves or restores the prompt cache of the main engine's chat slot, so the
+/// start of a chat doesn't have to be worked through again after a nap.
+#[tauri::command]
+pub async fn ai_cache(engine: State<'_, Engine>, action: String, file: String) -> Result<(), String> {
+    if !["save", "restore"].contains(&action.as_str()) || file.contains(['/', '\\']) || !file.ends_with(".bin") {
+        return Err("That isn't a cache action.".into());
+    }
+    let port = *engine.main.port.lock().unwrap();
+    if port == 0 {
+        return Err("The AI engine isn't running.".into());
+    }
+    let res = client()?
+        .post(format!("http://127.0.0.1:{port}/slots/0?action={action}"))
+        .json(&serde_json::json!({ "filename": file }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("The AI engine said {}.", res.status()))
+    }
 }
 
 #[tauri::command]

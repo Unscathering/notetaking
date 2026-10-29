@@ -181,6 +181,22 @@ export async function stop() {
 /** How much text, in tokens, the AI can keep in mind at once. */
 export const CONTEXT = 16384;
 
+/** Models that wouldn't start with the speed-ups on, this session. */
+const plainStart = new Set<string>();
+const cacheFile = (model: string) => `${model.replace(/\.gguf$/i, "").replace(/[^\w.-]+/g, "_")}.bin`;
+let cacheSaved = false;
+
+/**
+ * Saves the main engine's chat slot (the instructions, tools and chat so far) to
+ * disk, once per wake, so after a nap the next chat starts without working
+ * through them again.
+ */
+export async function saveCache() {
+	if (cacheSaved || !inDesktopApp || !ai.running || usingClaude() || plainStart.has(ai.model)) return;
+	cacheSaved = true;
+	await invoke("ai_cache", { action: "save", file: cacheFile(ai.model) }).catch(() => {});
+}
+
 /** The writing help model's smaller memory: it only ever sees a few paragraphs. */
 const WRITER_CONTEXT = 4096;
 
@@ -217,22 +233,39 @@ async function start(slot: Slot) {
 		// the main one plans around it.
 		const writer = writerMb();
 		const hw = slot === "writer" ? card : { ...card, vramMb: Math.max(0, card.vramMb - writer) };
+		// Speed-ups (guessing ahead, a saved prompt cache) need a recent engine; if one won't start with them, it starts without.
+		const speedups = !plainStart.has(file.file);
 		const args = {
+			speedups,
+			mtp: /mtp/i.test(file.file),
 			model: file.path,
 			gpuLayers: slot === "writer" && !writer ? 0 : gpuLayers(choice, hw),
 			cpuMoe: cpuExperts(choice, hw),
 			context: slot === "writer" ? WRITER_CONTEXT : CONTEXT,
 			slot,
 		};
-		try {
-			await invoke("ai_start", { ...args, device: hw.device && hw.vramMb ? hw.device : null });
-		} catch (e) {
-			// Older engines don't know how to pick a card; try once without.
-			if (!hw.device) throw e;
-			await invoke("ai_start", { ...args, device: null });
+		const tries = [
+			{ ...args, device: hw.device && hw.vramMb ? hw.device : null },
+			// Older engines don't know how to pick a card, or the speed-ups.
+			...(speedups ? [{ ...args, device: hw.device && hw.vramMb ? hw.device : null, speedups: false, mtp: false }] : []),
+			{ ...args, device: null, speedups: false, mtp: false },
+		];
+		for (let i = 0; ; i++) {
+			try {
+				await invoke("ai_start", tries[i]);
+				if (!tries[i].speedups) plainStart.add(file.file);
+				break;
+			} catch (e) {
+				if (i === tries.length - 1) throw e;
+			}
 		}
 		if (slot === "writer") ai.writerRunning = true;
-		else ai.running = true;
+		else {
+			ai.running = true;
+			cacheSaved = false;
+			// Pick up where the last chat's start left off, if this model saved one.
+			if (!plainStart.has(file.file)) await invoke("ai_cache", { action: "restore", file: cacheFile(file.file) }).catch(() => {});
+		}
 		rest();
 	} finally {
 		ai.starting = false;

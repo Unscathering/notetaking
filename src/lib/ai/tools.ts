@@ -4,8 +4,11 @@
 // and every change knows how to undo itself.
 import { baseName, joinPath, noteTitle, parentOf } from "../cave";
 import { blankCard, isBoardText, parseBoard, serializeBoard, type Board } from "../board";
-import { readProps } from "../notes";
+import { readProps, writeProps } from "../notes";
 import { recall } from "./recall";
+import { lookUp, TOPICS } from "./manual";
+import { parseSpec } from "../query";
+import { fill, templates } from "../templates";
 import { FONT_CHOICES, GLASS_DEFAULTS, PRESETS, SIDEBAR_STYLES, WALLPAPERS, cloneTheme, type HeadingStyle, type Theme } from "../theme/theme";
 import { theme, useTheme } from "../theme/store.svelte";
 import { ws } from "../workspace.svelte";
@@ -60,6 +63,7 @@ export const TOOLS = [
 	fn("read_note", "Read a note's full text.", { path: s("The note, like 'Ideas/Garden plan'.") }, ["path"]),
 	fn("search_notes", "Search every note's text.", { query: s("Words to look for.") }, ["query"]),
 	fn("list_tags", "See every tag and which notes use it."),
+	fn("basalt_help", `Look something up in Basalt's manual before writing anything Basalt-specific: live blocks (\`\`\`basalt lists for dashboards), CSS snippets and their classes and colors, templates, habits, embeds, themes. Topics: ${TOPICS.join(", ")}.`, { question: s("What you want to know, like 'live block keys' or 'CSS for dashboards'.") }, ["question"]),
 	fn("get_appearance", "See the current look of the app and every choice available (themes, materials, wallpapers, fonts, heading styles, sidebar styles)."),
 	fn("create_folder", "Propose making a folder (parents are made too).", { path: s("Like 'School/Math'."), color: s("Optional: red, orange, yellow, green, teal, blue, indigo, purple, pink, gray, or #hex."), icon: s(`Optional icon: one of ${FOLDER_ICONS.join(", ")}, or one emoji.`) }, ["path"]),
 	fn("create_note", "Propose making a note with Markdown content.", { path: s("Like 'School/Math/Homework'."), content: s("The note's Markdown text. Start with a # heading.") }, ["path", "content"]),
@@ -98,6 +102,46 @@ export const TOOLS = [
 		["spaces"]
 	),
 	fn(
+		"create_dashboard",
+		"Propose a dashboard: Basalt writes the live lists for you. With a note that exists, it becomes a dashboard (the lists go at its end); otherwise a new note is made. Use this instead of writing ```basalt blocks yourself.",
+		{
+			path: s("The note, like 'School/School dashboard'."),
+			folder: s("Optional: only show what's in this folder."),
+			sections: { type: "array", description: "What to show, in order.", items: { type: "string", enum: ["notes", "recent", "tasks", "due_this_week", "overdue", "tags", "habits"] } },
+		},
+		["path", "sections"]
+	),
+	fn(
+		"add_live_block",
+		"Propose adding one live list (a ```basalt block) to the end of a note. Look up the keys with basalt_help first if unsure.",
+		{
+			path: s("The note."),
+			title: s("A heading above it."),
+			list: s("notes, tasks, tags, backlinks or habits."),
+			show: s("list, cards, table or count."),
+			from: s("Optional: folders, separated by commas."),
+			tag: s("Optional: only notes with this tag."),
+			where: s("Optional: a property test, like 'status = active'."),
+			due: s("Optional, for tasks: today, week, overdue or any."),
+			sort: s("Optional: name, due, folder or a property; '-' in front reverses."),
+			limit: n("Optional: how many."),
+		},
+		["path", "list"]
+	),
+	fn(
+		"create_project",
+		"Propose a whole project in one go: a folder (inside 'Projects' unless told otherwise) with a project note (its goal, ideas and a log) and a board whose To do list holds the steps.",
+		{ name: s("The project's name."), goal: s("One or two sentences: what done looks like."), steps: { type: "array", items: { type: "string" }, description: "The first steps, short." }, parent: s("Optional: the folder to put it in; 'Projects' if left out."), color: s("Optional color name."), icon: s(`Optional: one of ${FOLDER_ICONS.join(", ")}, or one emoji.`) },
+		["name", "goal"]
+	),
+	fn("note_from_template", "Propose a note made from one of the cave's templates (like Meeting, Project, Book notes, Weekly review, Daily note).", { template: s("The template's name."), path: s("The new note, like 'Work/Meeting with Sam'.") }, ["template", "path"]),
+	fn(
+		"create_snippet",
+		"Propose a CSS snippet: a stylesheet that customizes how Basalt looks beyond the appearance settings (for one kind of note with cssclass, or the whole app). Look up the class names and theme colors with basalt_help first. It's turned on straight away.",
+		{ name: s("A short file name, like 'purple-headings'."), css: s("The CSS. Use theme variables like var(--accent) rather than fixed colors.") },
+		["name", "css"]
+	),
+	fn(
 		"change_appearance",
 		"Propose changing how the app looks. Give only what should change. Call get_appearance first to see the choices.",
 		{ theme: s("A theme name, applied first."), accent: s("Accent color, #hex or a color name."), material: s("solid, transparent, glass, frosted or liquid."), wallpaper: s("A wallpaper name, or 'none'."), heading_style: s("plain, underline, bar, accent, gradient or caps."), note_font: s("A font name."), sidebar_style: s("A sidebar style name."), corners: n("Corner rounding in pixels, 0 to 24."), text_size: n("Note text size in pixels, 12 to 26.") }
@@ -105,13 +149,55 @@ export const TOOLS = [
 	fn("remember", "Save one new, lasting fact about the person (their likes, projects, how they like to work) to your memory note. Not about the cave, its notes or folders, and never something already in your memory. At most once or twice per message.", { fact: s("One short sentence."), about: s('"person" (default) or "project": a fact about the project this chat belongs to, if it has one.') }, ["fact"]),
 ];
 
-export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "create_space", "create_home", "change_appearance"]);
+export const WRITES = new Set(["create_folder", "create_note", "edit_note", "append_to_note", "create_board", "add_card", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home", "create_space", "create_home", "create_dashboard", "add_live_block", "create_project", "note_from_template", "create_snippet", "change_appearance"]);
 
-const LOOKS_TOOLS = new Set(["get_appearance", "change_appearance"]);
-const LOOKS_WORDS = /\b(theme|look|looks|appearance|colou?r|dark|light|font|wallpaper|background|glass|frosted|accent|corner|style|pretty|aesthetic|design)\b/i;
+// ---- Only the tools a request needs ----
+// Every tool's instructions take room and attention; a small model picks the
+// right one much more often from 8 than from 25. The looking-around tools are
+// always there; the rest come in groups.
 
-/** The tools for this message: the app's look only comes up when the user asks about it. */
-export const toolsFor = (said: string) => TOOLS.filter((t) => !LOOKS_TOOLS.has(t.function.name) || LOOKS_WORDS.test(said));
+export type Group = "organize" | "write" | "boards" | "dashboards" | "style";
+export const GROUPS: Record<Group, { about: string; tools: string[]; words: RegExp }> = {
+	organize: {
+		about: "making, moving, renaming or deleting folders and notes; setting up the cave, areas, projects or a home page",
+		tools: ["create_folder", "create_space", "create_home", "create_project", "move_item", "rename_item", "delete_item", "clear_cave", "set_look", "set_home"],
+		words: /\b(folders?|organi[sz]e|move|rename|delete|remove|wipe|clear|sort|tidy|clean|set ?up|second brain|cave|areas?|projects?|home ?page|icons?)\b/i,
+	},
+	write: {
+		about: "writing, editing or adding to notes; notes from templates",
+		tools: ["create_note", "edit_note", "append_to_note", "note_from_template"],
+		words: /\b(write|notes?|draft|summari[sz]e|add|edit|rewrite|templates?|meeting|journal|daily|list|outline|essay|plan)\b/i,
+	},
+	boards: {
+		about: "Trello-style boards and their cards",
+		tools: ["create_board", "add_card"],
+		words: /\b(boards?|kanban|trello|cards?)\b/i,
+	},
+	dashboards: {
+		about: "dashboards, live lists of notes or tasks, trackers, home pages",
+		tools: ["create_dashboard", "add_live_block", "create_space", "create_home"],
+		words: /\b(dashboards?|overview|live|trackers?|tracking|home ?page|tasks?|habits?)\b/i,
+	},
+	style: {
+		about: "how the app looks: themes, colors, fonts, wallpaper, CSS snippets, customizing",
+		tools: ["get_appearance", "change_appearance", "create_snippet"],
+		words: /\b(theme|looks?|appearance|colou?rs?|dark|light|fonts?|wallpaper|background|glass|frosted|accent|corners?|style|styling|pretty|aesthetic|design|css|snippets?|customi[sz]e)\b/i,
+	},
+};
+const ALWAYS = new Set(["list_cave", "read_note", "search_notes", "list_tags", "basalt_help", "remember"]);
+
+/** The groups a message's words point to. */
+export const groupsByWords = (said: string) => (Object.keys(GROUPS) as Group[]).filter((g) => GROUPS[g].words.test(said));
+
+/** The tools for these groups, in the usual order (so the start of the request stays the same and the engine can reuse it). */
+export function toolsFor(groups: Iterable<Group>) {
+	const names = new Set(ALWAYS);
+	for (const g of groups) for (const t of GROUPS[g].tools) names.add(t);
+	return TOOLS.filter((t) => names.has(t.function.name));
+}
+
+/** The group a tool belongs to, to say what wasn't offered. */
+export const groupOf = (tool: string) => (Object.keys(GROUPS) as Group[]).find((g) => GROUPS[g].tools.includes(tool));
 
 // ---- Looking around ----
 
@@ -159,6 +245,8 @@ export function look(tool: string, a: Args): string {
 			return [...ws.tags].map(([tag, paths]) => `#${tag}: ${paths.map(noteTitle).join(", ")}`).join("\n") || "No tags yet.";
 		case "get_appearance":
 			return appearance();
+		case "basalt_help":
+			return lookUp(str(a.question));
 	}
 	return "Unknown tool.";
 }
@@ -178,6 +266,35 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 	const p = str(a.path);
 	if (tool === "clear_cave") return cleared ? "That's already in the plan." : ws.files.length || ws.folders.length ? "" : "The cave is already empty.";
 	if (tool === "change_appearance") return Object.keys(a).length ? "" : "Say what to change.";
+	if (tool === "create_snippet") {
+		const css = str(a.css);
+		if (!snippetName(a.name)) return "Give the snippet a short name, like 'purple-headings'.";
+		if (!css || !css.includes("{")) return "Give the CSS, with selectors and { } blocks.";
+		if (css.split("{").length !== css.split("}").length) return "The CSS's { and } don't match up. Check it and try again.";
+		return /@import|url\(\s*['"]?(https?:|\/\/)/i.test(css) ? "Snippets can't load files from the internet." : "";
+	}
+	if (tool === "create_project") {
+		const name = folderPath(a.name);
+		if (!name || name.includes("/")) return "Give the project a simple name.";
+		const folder = joinPath(folderPath(a.parent) || "Projects", name);
+		return there(folder) || made(folder) || planned.some((c) => c.tool === "create_project" && folderPath(c.args.name).toLowerCase() === name.toLowerCase()) ? `"${folder}" already exists. Pick another name.` : "";
+	}
+	if (tool === "note_from_template") {
+		if (!templates().some((t) => t.name.toLowerCase() === str(a.template).toLowerCase())) return `There's no template called "${str(a.template)}". Templates: ${templates().map((t) => t.name).join(", ")}.`;
+		return !p ? "Give the new note's name." : !cleared && ws.files.includes(notePath(p)) ? `"${p}" already exists.` : "";
+	}
+	if (tool === "create_dashboard") {
+		const sections = Array.isArray(a.sections) ? a.sections : [];
+		if (!sections.length) return "Say what the dashboard shows (sections).";
+		const f = folderPath(a.folder);
+		return f && !exists(f) ? missing(f) : !p ? "Give the dashboard note's name." : "";
+	}
+	if (tool === "add_live_block") {
+		if (!p) return "Name the note to add it to.";
+		if (!exists(p)) return missing(p);
+		const spec = parseSpec(liveBlock(a));
+		return spec.unknown.length ? `These parts aren't right: ${spec.unknown.join("; ")}. Look up the keys with basalt_help.` : "";
+	}
 	if (tool === "add_card") return !str(a.board) ? "Name the board." : exists(a.board) ? (str(a.title) ? "" : "Give the card a title.") : missing(a.board);
 	if (tool === "create_space") {
 		const name = folderPath(a.name);
@@ -243,6 +360,16 @@ export function describe(tool: string, a: Args): { summary: string; icon: IconNa
 			return { summary: `${isFolder(folderPath(a.name)) ? "Give" : "Make"} the area “${folderPath(a.name)}” ${isFolder(folderPath(a.name)) ? "a" : "with its own"} dashboard${str(a.about) ? `: ${str(a.about)}` : ""}`, icon: "folderPlus" };
 		case "create_home":
 			return { summary: `Make a home page “${str(a.title) || "Home"}” linking to ${(Array.isArray(a.spaces) ? a.spaces : []).length || "every"} areas`, icon: "home" };
+		case "create_dashboard":
+			return { summary: `${findNote(p) ? "Turn" : "Make"} “${noteTitle(notePath(p))}” ${findNote(p) ? "into" : "as"} a dashboard: ${(Array.isArray(a.sections) ? a.sections : []).map((x) => SECTIONS[str(x)]?.title.toLowerCase() ?? str(x)).join(", ")}`, icon: "layers" };
+		case "add_live_block":
+			return { summary: `Add a live list${str(a.title) ? ` “${str(a.title)}”` : ""} to “${noteTitle(notePath(p))}”`, icon: "layers" };
+		case "create_project":
+			return { summary: `Start the project “${folderPath(a.name)}”: a folder, a project note and a board${Array.isArray(a.steps) && a.steps.length ? ` with ${a.steps.length} steps` : ""}`, icon: "folderPlus" };
+		case "note_from_template":
+			return { summary: `Write “${notePath(p).replace(/\.md$/, "")}” from the ${str(a.template)} template`, icon: "pencil" };
+		case "create_snippet":
+			return { summary: `Add the CSS snippet “${snippetName(a.name)}” and turn it on`, icon: "palette" };
 		case "change_appearance":
 			return { summary: `Change the look: ${Object.entries(a).map(([k, v]) => `${k.replace("_", " ")} ${String(v)}`).join(", ")}`, icon: "palette" };
 	}
@@ -403,6 +530,75 @@ export async function apply(c: Change): Promise<Undo> {
 				await ws.remove(made);
 			};
 		}
+		case "create_dashboard": {
+			const sections = (Array.isArray(a.sections) ? a.sections : []).map(str);
+			const existing = findNote(a.path);
+			if (existing) {
+				const old = ws.texts.get(existing) ?? "";
+				const props = readProps(old);
+				const classes = new Set([...(props.other.cssclass ?? "").split(/[\s,]+/).filter(Boolean), "dashboard"]);
+				props.other.cssclass = [...classes].join(" ");
+				await ws.writeNote(existing, `${writeProps(old, props).replace(/\s+$/, "")}\n\n${dashboardBlocks(sections, folderPath(a.folder))}\n`);
+				await useDashboardSnippet();
+				return () => ws.writeNote(existing, old);
+			}
+			const path = notePath(a.path);
+			const title = baseName(path).replace(/\.md$/i, "");
+			const made = await cave.create(parentOf(path), title, `---\ncssclass: dashboard\n---\n# ${title}\n\n${dashboardBlocks(sections, folderPath(a.folder))}\n`);
+			await ws.refresh();
+			await useDashboardSnippet();
+			return () => ws.remove(made);
+		}
+		case "add_live_block": {
+			const path = findNote(a.path);
+			if (!path) throw new Error(`There's no note called “${str(a.path)}”.`);
+			const old = ws.texts.get(path) ?? "";
+			await ws.writeNote(path, `${old.replace(/\s+$/, "")}\n\n\`\`\`basalt\n${liveBlock(a)}\n\`\`\`\n`);
+			return () => ws.writeNote(path, old);
+		}
+		case "create_project": {
+			const name = folderPath(a.name);
+			const folder = joinPath(folderPath(a.parent) || "Projects", name);
+			const steps = (Array.isArray(a.steps) ? a.steps : []).map(str).filter(Boolean);
+			const parentExisted = isFolder(parentOf(folder));
+			await cave.mkdir(folder);
+			const note = await cave.create(folder, name, `# ${name}\n\n> [!note] Goal\n> ${str(a.goal).replace(/\n+/g, " ")}\n\n## Steps\nOn the [[${name} board]]: move each card along as it gets done.\n\n## Ideas and links\n\n\n## Log\n- ${new Date().toISOString().slice(0, 10)}: Started.\n`);
+			const board: Board = { head: "---\nbasalt: board\n---", columns: ["To do", "Doing", "Done"].map((col, i) => ({ id: `col:${i}`, name: col, cards: i === 0 ? steps.map((x) => blankCard(x)) : [] })) };
+			const boardPath = await cave.create(folder, `${name} board`, serializeBoard(board));
+			await ws.refresh();
+			if (color(a.color) || iconName(a.icon)) await ws.setLook(folder, { color: color(a.color) || undefined, icon: iconName(a.icon) || undefined });
+			return async () => {
+				await ws.remove(boardPath);
+				await ws.remove(note);
+				await ws.remove(folder);
+				if (!parentExisted && !ws.files.some((f) => f.startsWith(`${parentOf(folder)}/`))) await ws.remove(parentOf(folder));
+			};
+		}
+		case "note_from_template": {
+			const t = templates().find((x) => x.name.toLowerCase() === str(a.template).toLowerCase());
+			if (!t) throw new Error(`There's no template called “${str(a.template)}”.`);
+			const path = notePath(a.path);
+			const title = baseName(path).replace(/\.md$/i, "");
+			const made = await cave.create(parentOf(path), title, fill(t.path ? await cave.read(t.path) : t.text(), title));
+			await ws.refresh();
+			return () => ws.remove(made);
+		}
+		case "create_snippet": {
+			const { loadSnippets, saveSnippet, toggleSnippet, deleteSnippet, snippets } = await import("../snippets.svelte");
+			await loadSnippets();
+			const name = `${snippetName(a.name)}.css`;
+			const before = snippets.texts[name];
+			const wasOn = (ws.meta.snippets ?? []).includes(name);
+			await saveSnippet(name, `${str(a.css)}\n`);
+			await toggleSnippet(name, true);
+			return async () => {
+				if (before == null) await deleteSnippet(name);
+				else {
+					await saveSnippet(name, before);
+					await toggleSnippet(name, wasOn);
+				}
+			};
+		}
 		case "change_appearance": {
 			const before = cloneTheme(theme);
 			changeAppearance(a);
@@ -464,6 +660,30 @@ list: habits
 days: 14`)}
 `;
 }
+
+/** What a dashboard can show, and the block for each. */
+const SECTIONS: Record<string, { title: string; block: (from: string) => string }> = {
+	notes: { title: "Notes", block: (f) => `title: Notes${f ? `\nfrom: ${f}` : ""}\nshow: cards\nsort: name` },
+	recent: { title: "Recent notes", block: (f) => `title: Recent notes${f ? `\nfrom: ${f}` : ""}\nsort: -name\nlimit: 8` },
+	tasks: { title: "Open tasks", block: (f) => `title: Open tasks\nlist: tasks${f ? `\nfrom: ${f}` : ""}` },
+	due_this_week: { title: "Due this week", block: (f) => `title: Due this week\nlist: tasks${f ? `\nfrom: ${f}` : ""}\ndue: week` },
+	overdue: { title: "Overdue", block: (f) => `title: Overdue\nlist: tasks${f ? `\nfrom: ${f}` : ""}\ndue: overdue\nshow: count` },
+	tags: { title: "Tags", block: (f) => `title: Tags${f ? `\nfrom: ${f}` : ""}\nlist: tags\nlimit: 12` },
+	habits: { title: "Habits", block: () => "title: Habits\nlist: habits\ndays: 21" },
+};
+const dashboardBlocks = (sections: string[], from: string) => blocks(...sections.filter((x) => x in SECTIONS).map((x) => SECTIONS[x].block(from)));
+
+/** A live block's lines from the AI's answers, keeping only what was given. */
+function liveBlock(a: Args): string {
+	return ["title", "list", "show", "from", "tag", "where", "due", "sort", "limit"]
+		.map((k) => [k, str(a[k])])
+		.filter(([, v]) => v)
+		.map(([k, v]) => `${k}: ${v}`)
+		.join("\n");
+}
+
+/** A snippet's file name, without .css: lowercase words and dashes. */
+const snippetName = (v: unknown) => str(v).replace(/\.css$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
 
 /** Dashboards look best with the dashboard snippet; turn it on once. */
 async function useDashboardSnippet() {

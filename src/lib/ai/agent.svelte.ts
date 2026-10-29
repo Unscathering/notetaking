@@ -14,8 +14,8 @@
 // with what it learned and a line about the conversation.
 import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
-import { CONTEXT, stream } from "./engine.svelte";
-import { TOOLS, WRITES, apply, check, context, describe, look, toolsFor, type Change } from "./tools";
+import { CONTEXT, ai, saveCache, stream, writerAwake } from "./engine.svelte";
+import { GROUPS, TOOLS, WRITES, apply, check, context, describe, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
 import { recall, type Found } from "./recall";
 import { usingClaude } from "./claude.svelte";
 import { noteTitle } from "../cave";
@@ -287,10 +287,21 @@ export async function setProject(folder: string) {
 
 // ---- Talking ----
 
-function system(memory: string, found: Found[] = []): string {
+/** What goes with the latest message: where the user is, and notes that may help. */
+function aboutNow(found: Found[]): string {
 	const notes = found.length
 		? `\n\nNotes that may help with the latest message (found by searching the cave; read_note gives the whole note):\n${found.map((f) => `--- [[${noteTitle(f.path)}]] (${f.path}) ---\n${f.excerpt}`).join("\n\n")}`
 		: "";
+	return `${context()}${notes}`;
+}
+
+/**
+ * The instructions. On this computer they leave out what changes with every
+ * message (that goes with the message instead, see fit), so the start of every
+ * request is the same and the engine can reuse its work on it.
+ */
+function system(memory: string, found: Found[] = []): string {
+	const now = usingClaude() ? `\n\n${aboutNow(found)}` : "";
 	const project = chat.project
 		? `\n\nThis chat is part of the project "${chat.project}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${chat.projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
 		: "";
@@ -311,15 +322,16 @@ How you work:
 - Put each folder's notes and boards inside that folder, with paths like "Writing/Writing board", never at the top level unless asked.
 - For folders with dashboards, a "second brain" or "set up my cave": use create_space once for each area (Basalt writes each dashboard) and create_home once at the end. Don't write dashboards or a home page yourself with create_note: it takes far too long.
 - To make a home page some other way, write the note with create_note first (like "Home"), then set_home on it.
-- Change the app's look (theme, colors, fonts) only when the user asks about the look.
+- Change the app's look (theme, colors, fonts) only when the user asks about the look. For anything the settings can't do, write a CSS snippet with create_snippet.
+- For dashboards use create_dashboard (Basalt writes the live lists); to add one list to a note, add_live_block. For a new project, create_project. For meetings, book notes and the like, note_from_template.
+- Before writing anything Basalt-specific yourself (a \`\`\`basalt live block, CSS for a snippet, a template), look it up with basalt_help and follow what it says.
 - If a tool says a change won't work, fix it or leave it out. Never repeat a tool call you already made.
 - When you learn something new and lasting about the person (their projects, likes, how they want you to talk), save it with remember: at most twice per message, and never about the cave.
 
-${context()}
 Today is ${new Date().toDateString()}.
 
 Your memory of this person:
-${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}${project}${notes}`;
+${memory.trim().slice(0, 1500) || "(Nothing yet. This may be your first conversation.)"}${project}${now}`;
 }
 
 // ---- Staying inside the AI's limit ----
@@ -342,7 +354,7 @@ function plain(list: ApiMessage[]): ApiMessage[] {
 	return out;
 }
 
-function fit(sys: string, tools: object[], budget: number): ApiMessage[] {
+function fit(sys: string, tools: object[], budget: number, extra = ""): ApiMessage[] {
 	// Claude keeps a whole conversation in mind, and its history must stay exactly as it was.
 	if (usingClaude()) return [{ role: "system", content: sys }, ...history];
 	const room = budget - ANSWER_ROOM - tokens(sys) - tokens(tools);
@@ -355,6 +367,8 @@ function fit(sys: string, tools: object[], budget: number): ApiMessage[] {
 		if (now[i].role === "tool" && now[i].content.length > 300) now[i].content = `${now[i].content.slice(0, 300)}… (shortened)`;
 	}
 	if (size() > room) now = now.filter((m, i) => i === 0 || m.role !== "tool" || i > now.length - 4);
+	// Where the user is and the notes found for it go with the message itself.
+	if (extra && now[0]?.role === "user") now[0] = { ...now[0], content: `${now[0].content}\n\n(${extra.trim()})` };
 	return [{ role: "system", content: sys }, ...older, ...now];
 }
 
@@ -364,6 +378,48 @@ const tooLong = (e: unknown) => /exceed_context_size|context size|context length
 export const THINKING = ["Pondering", "Mulling it over", "Rummaging", "Noodling", "Brewing ideas", "Puzzling", "Daydreaming", "Scheming", "Connecting dots", "Chewing on it", "Doodling", "Tinkering"];
 
 const say = (m: ChatMessage, patch: Partial<ChatMessage>) => Object.assign(chat.messages.find((x) => x.id === m.id) ?? m, patch);
+
+/** The groups of tools the last message needed, for follow-ups like "yes, do that". */
+let lastGroups: Group[] = [];
+
+/**
+ * Which groups of tools a message needs. The words decide the obvious cases;
+ * otherwise the AI sorts it in a quick, tiny request (the writing help model
+ * does it, if it's awake). When in doubt, more groups rather than fewer.
+ */
+async function sortRequest(text: string): Promise<Group[]> {
+	const byWords = groupsByWords(text);
+	const names = Object.keys(GROUPS) as Group[];
+	let byAi: Group[] = [];
+	try {
+		const last = chat.messages.filter((m) => m.role === "assistant" && m.text.trim()).at(-2)?.text.slice(0, 400) ?? "";
+		let out = "";
+		await stream(
+			{
+				messages: [
+					{ role: "system", content: `Sort a request to the AI helper of a note-taking app. Which of these does it need? Several is fine; none if it's only a question or a chat.\n${names.map((g) => `- ${g}: ${GROUPS[g].about}`).join("\n")}\nReply with JSON like {"needs": ["organize"]}.` },
+					{ role: "user", content: `${last ? `(The helper had just said: "${last.replace(/\s+/g, " ")}")\n` : ""}${text.slice(0, 1500)}` },
+				],
+				response_format: { type: "json_schema", schema: { type: "object", properties: { needs: { type: "array", items: { type: "string", enum: names } } }, required: ["needs"] } },
+				temperature: 0,
+				max_tokens: 60,
+				cache_prompt: true,
+				id_slot: 1,
+				effort: "low",
+			},
+			(d) => (out += (d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? ""),
+			ai.writerModel && writerAwake() ? "writer" : "main"
+		);
+		const got = (JSON.parse(out) as { needs?: unknown[] }).needs ?? [];
+		byAi = got.filter((g): g is Group => names.includes(g as Group));
+	} catch {
+		// Couldn't tell: the words, and the usual groups, will do.
+		if (!byWords.length) return ["organize", "write", "dashboards"];
+	}
+	// A short follow-up ("yes", "make it blue") carries on with what the last message needed.
+	const followUp = text.trim().split(/\s+/).length <= 8 ? lastGroups : [];
+	return [...new Set([...byWords, ...byAi, ...followUp])];
+}
 
 export async function send(text: string) {
 	if (chat.busy || !text.trim()) return;
@@ -377,7 +433,11 @@ export async function send(text: string) {
 	chat.messages.push({ id: nextId++, role: "assistant", text: "", steps: [], streaming: true });
 	const reply = chat.messages[chat.messages.length - 1];
 	const plan: Change[] = [];
-	const tools = usingClaude() ? TOOLS : toolsFor(text);
+	say(reply, { thinking: true, stage: "Working out what's needed" });
+	const groups = usingClaude() ? [] : await sortRequest(text).catch(() => groupsByWords(text));
+	lastGroups = groups;
+	const tools = usingClaude() ? TOOLS : toolsFor(groups);
+	let failed = false;
 	const done = new Set<string>();
 	let changeId = 1;
 	let memories = 0;
@@ -415,7 +475,7 @@ export async function send(text: string) {
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
-				stream({ messages: fit(system(memory, found), tools, budget), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true, effort: "medium" }, (d) => {
+				stream({ messages: fit(system(memory, found), tools, budget, usingClaude() ? "" : aboutNow(found)), tools, temperature: 0.5, dry_multiplier: 0.8, cache_prompt: true, id_slot: 0, effort: "medium" }, (d) => {
 					if (d.basalt_raw) raw = d.basalt_raw as unknown[];
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
@@ -476,9 +536,10 @@ export async function send(text: string) {
 						memoryStep.detail = [memoryStep.detail, `• ${fact}`].filter(Boolean).join("\n");
 						memoryStep.label = memories === 1 ? "Remembered something about you" : `Remembered ${memories} things about you`;
 					}
-				} else if (!tools.some((t) => t.function.name === call.name)) {
-					// Made up, or not offered this time (like the look, when the user didn't ask about it).
-					result = call.name === "change_appearance" ? "The user didn't ask about the app's look, so leave it as it is." : `There's no tool called ${call.name}.`;
+				} else if (!TOOLS.some((t) => t.function.name === call.name) || (groupOf(call.name) === "style" && !tools.some((t) => t.function.name === call.name))) {
+					// Made up, or the look when the user didn't ask about it. (Other real tools
+					// that weren't offered this time are fine: the sorting can miss things.)
+					result = groupOf(call.name) === "style" ? "The user didn't ask about the app's look, so leave it as it is." : `There's no tool called ${call.name}.`;
 					refused = true;
 				} else if (WRITES.has(call.name)) {
 					const problem = check(call.name, args, plan);
@@ -518,6 +579,7 @@ export async function send(text: string) {
 		const sources = [...new Set([...read, ...linked])].filter((p) => ws.files.includes(p));
 		if (sources.length) say(reply, { sources });
 	} catch (e) {
+		failed = true;
 		const message = e instanceof Error ? e.message : String(e);
 		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : plan.length ? `${message} What it planned before stopping is below.` : message });
 	} finally {
@@ -530,6 +592,8 @@ export async function send(text: string) {
 		say(reply, { streaming: false, thinking: false });
 		chat.busy = false;
 	}
+	// Keep the start of this chat for after the engine's next nap.
+	if (!failed) void saveCache();
 	if (++sinceMemory >= 4) void updateMemory();
 }
 
@@ -566,6 +630,16 @@ function doing(tool: string, target?: string): string {
 			return `Choosing the home page${t}`;
 		case "change_appearance":
 			return "Changing the look";
+		case "create_dashboard":
+			return `Making the dashboard${t}`;
+		case "add_live_block":
+			return `Adding a live list${t ? ` to${t}` : ""}`;
+		case "create_project":
+			return `Setting up the project${t}`;
+		case "note_from_template":
+			return `Writing${t || " a note"} from a template`;
+		case "create_snippet":
+			return `Writing the CSS snippet${t}`;
 	}
 	return "Planning a change";
 }
@@ -582,11 +656,13 @@ function stepLabel(tool: string, a: Record<string, unknown>, now: boolean): stri
 			return now ? "Checking your tags" : "Checked your tags";
 		case "get_appearance":
 			return now ? "Checking the app's look" : "Checked the app's look";
+		case "basalt_help":
+			return `${now ? "Looking up" : "Looked up"} “${String(a.question ?? "")}” in Basalt's manual`;
 	}
 	return tool;
 }
 
-const stepIcon = (tool: string): IconName => (tool === "search_notes" ? "search" : tool === "list_cave" ? "folder" : tool === "list_tags" ? "tag" : tool === "get_appearance" ? "palette" : "file");
+const stepIcon = (tool: string): IconName => (tool === "search_notes" ? "search" : tool === "list_cave" ? "folder" : tool === "list_tags" ? "tag" : tool === "get_appearance" ? "palette" : tool === "basalt_help" ? "book" : "file");
 
 /** Makes the checked changes of a plan, in order. */
 export async function approve(m: ChatMessage) {
