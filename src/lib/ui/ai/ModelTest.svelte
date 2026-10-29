@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The model test: run Basalt's jobs on a model (or every model on this PC)
 	// and compare the scores. See ai/bench.svelte.ts.
-	import { AREAS, JOB_COUNT, bench, cancelTest, forgetRun, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
+	import { AREAS, AREA_COUNT, JOB_COUNT, bench, cancelTest, forgetRun, progress, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
 	import { ai } from "../../ai/engine.svelte";
 	import { MODELS } from "../../ai/models";
 	import { usingClaude } from "../../ai/claude.svelte";
@@ -14,20 +14,40 @@
 	const tone = (n: number) => (n >= 80 ? "good" : n >= 55 ? "ok" : "bad");
 	const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 	const pick = (r: TestRun) => (open = open === r.model ? null : r.model);
+	/** Ticks once a second while a test runs, for the clock. */
+	let now = $state(Date.now());
+	$effect(() => {
+		if (!bench.running) return;
+		const t = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(t);
+	});
+	const clock = (s: number) => (s < 60 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s`);
 </script>
 
 <section class="test">
 	<h3>How good is each model at Basalt?</h3>
-	<p class="hint">Runs {JOB_COUNT} real Basalt jobs (organizing, dashboards, customizing, grammar fixes, answering from notes) in a practice cave, and scores them. Your own notes are never touched.</p>
+	<p class="hint"><b>{JOB_COUNT} tests in {AREA_COUNT} areas</b>: organizing, dashboards, customizing, grammar fixes, answering from notes, and care. They run in a practice cave and are scored; your own notes are never touched.</p>
 
 	{#if bench.running}
+		{@const p = progress(now)}
 		<div class="progress">
 			<div class="line">
 				<span class="spin"></span>
-				<span>{bench.models > 1 ? `Model ${bench.modelIndex} of ${bench.models}: ` : ""}{label(bench.model)} · job {bench.job} of {bench.of}</span>
+				<span class="what">{bench.models > 1 ? `Model ${bench.modelIndex} of ${bench.models}: ` : ""}<b>{label(bench.model)}</b></span>
 				<button class="ghost" onclick={cancelTest}>Stop</button>
 			</div>
-			<div class="bar"><i style="width: {((bench.modelIndex - 1 + bench.job / Math.max(1, bench.of)) / Math.max(1, bench.models)) * 100}%"></i></div>
+			<div class="bar"><i style="width: {p.percent}%"></i></div>
+			<div class="count">
+				<span><b>{p.percent}%</b> · test {p.doneOverall + 1 > p.total ? p.total : p.doneOverall + 1} of {p.total}</span>
+				<span>{clock(p.elapsed)} so far{p.left ? ` · about ${clock(p.left)} left` : ""}</span>
+			</div>
+			<p class="now">Now: {bench.current}</p>
+			<div class="stats">
+				<div><b class="score-{tone(p.score)}">{p.finished ? p.score : "–"}</b><span>score so far</span></div>
+				<div><b class="good">{p.passed}</b><span>passed</span></div>
+				<div><b class="ok">{p.partly}</b><span>partly</span></div>
+				<div><b class="bad">{p.failed}</b><span>failed</span></div>
+			</div>
 		</div>
 	{:else}
 		<div class="buttons">
@@ -136,9 +156,60 @@
 		gap: 8px;
 		font-size: 12.5px;
 	}
-	.progress .line span:nth-child(2) {
+	.progress .what {
 		flex: 1;
 		min-width: 0;
+	}
+	.count {
+		display: flex;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		margin-top: 6px;
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+	.count b {
+		color: var(--text);
+	}
+	.now {
+		margin: 8px 0 0;
+		font-size: 12px;
+		line-height: 1.4;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 6px;
+		margin-top: 10px;
+	}
+	.stats div {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 6px 4px;
+		border-radius: var(--radius);
+		background: color-mix(in srgb, var(--muted) 10%, transparent);
+	}
+	.stats b {
+		font-size: 17px;
+		background: none;
+	}
+	.stats span {
+		font-size: 10.5px;
+		color: var(--muted);
+	}
+	.stats .good {
+		color: #5fb878;
+	}
+	.stats .ok {
+		color: #e5a84b;
+	}
+	.stats .bad {
+		color: #e05d5d;
 	}
 	.spin {
 		width: 12px;

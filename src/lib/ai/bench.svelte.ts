@@ -405,7 +405,18 @@ export const bench = $state({
 	models: 0,
 	cancelled: false,
 	error: "",
+	/** The job being run, as asked. */
+	current: "",
+	/** This model's results so far, for the live numbers. */
+	done: [] as JobResult[],
+	/** When the whole run started, and when this model's started (ms). */
+	started: 0,
+	modelStarted: 0,
+	/** Seconds each finished model took, to guess how long the rest will take. */
+	modelSeconds: [] as number[],
 });
+
+export const AREA_COUNT = Object.keys(AREAS).length;
 
 function keep(run: TestRun) {
 	bench.runs = [run, ...bench.runs.filter((r) => r.model !== run.model)].sort((a, b) => b.score - a.score);
@@ -515,14 +526,43 @@ async function grammar(job: Job): Promise<Score> {
 	return { score: Math.max(0, 1 - off / needed), notes: off ? [`Got “${got}”`] : [] };
 }
 
+/** Live numbers for the run going on: how far, how well so far, and how long is left. */
+export function progress(now = Date.now()) {
+	const finished = bench.done.length;
+	const passed = bench.done.filter((j) => j.score >= 1).length;
+	const failed = bench.done.filter((j) => j.score === 0).length;
+	const total = bench.of * bench.models;
+	const doneOverall = (bench.modelIndex - 1) * bench.of + finished;
+	const elapsed = (now - bench.started) / 1000;
+	// Jobs so far on this model set the pace; a model just started borrows the last one's.
+	const perJob = finished ? (now - bench.modelStarted) / 1000 / finished : bench.modelSeconds.length ? bench.modelSeconds.at(-1)! / bench.of : 0;
+	const left = perJob ? perJob * (total - doneOverall) : 0;
+	return {
+		finished,
+		passed,
+		partly: finished - passed - failed,
+		failed,
+		/** This model's score so far, 0 to 100. */
+		score: finished ? Math.round((bench.done.reduce((n, j) => n + j.score, 0) / finished) * 100) : 0,
+		total,
+		doneOverall,
+		percent: total ? Math.round((doneOverall / total) * 100) : 0,
+		elapsed,
+		left,
+	};
+}
+
 /** Runs every job on the model in use. */
 async function testModel(): Promise<TestRun> {
 	perSecond = [];
 	const results: JobResult[] = [];
 	bench.of = JOBS.length;
+	bench.done = [];
+	bench.modelStarted = Date.now();
 	for (const [i, job] of JOBS.entries()) {
 		if (bench.cancelled) break;
 		bench.job = i + 1;
+		bench.current = job.ask;
 		const t0 = performance.now();
 		const limit = setTimeout(stopAnswer, JOB_LIMIT_S * 1000);
 		let s: Score;
@@ -534,7 +574,9 @@ async function testModel(): Promise<TestRun> {
 			clearTimeout(limit);
 		}
 		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000 });
+		bench.done = [...results];
 	}
+	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];
 	const byArea: Partial<Record<Area, number>> = {};
 	for (const a of Object.keys(AREAS) as Area[]) {
 		const r = results.filter((x) => x.area === a);
@@ -555,7 +597,7 @@ async function testModel(): Promise<TestRun> {
 export async function runTest(models: string[] = [ai.model]) {
 	if (bench.running) return;
 	const before = ai.model;
-	Object.assign(bench, { running: true, cancelled: false, error: "", models: models.length, modelIndex: 0 });
+	Object.assign(bench, { running: true, cancelled: false, error: "", models: models.length, modelIndex: 0, started: Date.now(), modelSeconds: [], done: [], current: "" });
 	try {
 		for (const [i, model] of models.entries()) {
 			if (bench.cancelled) break;
