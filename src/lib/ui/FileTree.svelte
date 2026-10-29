@@ -104,6 +104,7 @@
 					]
 				: [
 						{ label: "Open", icon: "file", run: () => ws.open(entry.path) },
+						{ label: "Open on the right", icon: "layout", run: () => ws.openSplit(entry.path) },
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
 						{ label: "Make this the home page", icon: "home", run: () => ws.setHome(entry.path) },
 						{ label: "History", icon: "clock", run: () => ws.showHistory(entry.path) },
@@ -175,7 +176,7 @@
 					class:drop-after={drop === "after"}
 					style:--tint={l.color}
 					draggable="true"
-					onclick={() => ws.open(entry.path)}
+					onclick={(e) => (e.ctrlKey || e.metaKey ? ws.openSplit(entry.path) : ws.open(entry.path))}
 					oncontextmenu={(e) => menuFor(e, entry)}
 					ondragstart={(e) => ondragstart(e, entry)}
 					ondragover={(e) => ondragover(e, entry)}

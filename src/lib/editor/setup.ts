@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
@@ -173,7 +173,8 @@ export function editorExtensions(hooks: EditorHooks): Extension[] {
 		placeholder("Start writing…"),
 		keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
 		EditorView.updateListener.of((u) => {
-			if (u.docChanged) hooks.onChange(u.state.doc.toString());
+			// Text that came from elsewhere (another pane, the AI) is already saved.
+			if (u.docChanged && !u.transactions.some((t) => t.annotation(Transaction.remote))) hooks.onChange(u.state.doc.toString());
 			if (u.selectionSet || u.docChanged) hooks.onCursor?.(u.state.doc.lineAt(u.state.selection.main.head).number - 1);
 		}),
 	];

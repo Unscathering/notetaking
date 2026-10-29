@@ -89,6 +89,10 @@ check again before a public launch.
   gallery, or board grouped by a property. `viewInfo` names view tabs.
 - `ui/OutlinePanel.svelte`: the sidebar's outline (headings, reading time,
   `goal:` words); the editor reports the cursor line as `ws.cursorLine`.
+- Split panes: `ws.split` is the note on the right (`ui/SplitPane.svelte`,
+  opened with Ctrl+click or "Open on the right"); each editor follows
+  changes made elsewhere while it isn't focused (marked `Transaction.remote`
+  so they aren't saved twice).
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
@@ -193,7 +197,7 @@ Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
 Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
 Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
 grammar (selection or whole note), Ctrl+Shift+D today's note, Ctrl+Shift+N
-new note from a template.
+new note from a template, Ctrl+click a note to open it on the right.
 
 ## Status
 

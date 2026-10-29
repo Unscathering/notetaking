@@ -62,6 +62,7 @@ export const COMMANDS: Command[] = [
 	{ id: "focus", label: "Focus mode", icon: "focus", keys: "Ctrl+Shift+Enter", run: () => (writing.focus = !writing.focus) },
 	{ id: "typewriter", label: "Typewriter scrolling", icon: "type", run: () => (writing.typewriter = !writing.typewriter) },
 	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
+	{ id: "split", label: "Open this note on the right too", icon: "layout", run: () => (ws.split ? (ws.split = null) : ws.openSplit(ws.note ?? ws.recent)) },
 	{ id: "close-tab", label: "Close tab", icon: "x", keys: "Ctrl+W", run: () => ws.active && ws.closeTab(ws.active) },
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.note && ws.setHome(ws.note) },
 	{ id: "history", label: "History of this note", icon: "clock", run: () => (ws.note || ws.recent ? ws.showHistory(ws.note ?? ws.recent) : alert("Open a note first.")) },

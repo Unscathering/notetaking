@@ -13,6 +13,7 @@
 	import GraphView from "./lib/ui/GraphView.svelte";
 	import CalendarView from "./lib/ui/CalendarView.svelte";
 	import DatabaseView from "./lib/ui/DatabaseView.svelte";
+	import SplitPane from "./lib/ui/SplitPane.svelte";
 	import UpdateNotice from "./lib/ui/UpdateNotice.svelte";
 	import Backups from "./lib/ui/Backups.svelte";
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
@@ -39,6 +40,19 @@
 	const ms = $derived(motionMs(theme));
 	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
 	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));
+	/** Where the split sits, as a share of the width (remembered). */
+	let splitAt = $state(Number(localStorage.getItem("basalt.split-at")) || 50);
+	function startResize(e: PointerEvent) {
+		const box = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
+		const move = (ev: PointerEvent) => (splitAt = Math.min(80, Math.max(20, ((ev.clientX - box.left) / box.width) * 100)));
+		const up = () => {
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
+			localStorage.setItem("basalt.split-at", String(Math.round(splitAt)));
+		};
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+	}
 	const words = $derived(ws.note ? (ws.texts.get(ws.note) ?? "").split(/\s+/).filter(Boolean).length : 0);
 
 	let editorHost: HTMLElement | undefined = $state();
@@ -136,6 +150,7 @@
 			</div>
 		</div>
 
+		<div class="panes" style:--split={`${splitAt}%`} class:is-split={!!ws.split}>
 		<div class="editor-area" bind:this={editorHost}>
 			{#if !ws.cave}
 				<div class="start">
@@ -162,6 +177,11 @@
 					<button class="primary" onclick={() => ws.newNote()}>New note</button>
 				</div>
 			{/if}
+		</div>
+		{#if ws.split && ws.cave}
+			<div class="divider" role="separator" aria-orientation="vertical" onpointerdown={startResize} title="Drag to resize"></div>
+			<SplitPane {ms} />
+		{/if}
 		</div>
 
 		{#if writing.focus}
@@ -450,6 +470,33 @@
 	.editor-area {
 		flex: 1;
 		min-height: 0;
+	}
+	.panes {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+	}
+	.panes > .editor-area {
+		min-width: 0;
+	}
+	.panes.is-split > .editor-area {
+		flex: 0 0 var(--split);
+	}
+	.panes.is-split > :global(.pane) {
+		flex: 1;
+	}
+	.divider {
+		flex: none;
+		width: 5px;
+		margin: 0 -2px;
+		z-index: 2;
+		background: linear-gradient(var(--chrome-line), var(--chrome-line)) center / 1px 100% no-repeat;
+		cursor: col-resize;
+		transition: background-size var(--dur) var(--ease);
+	}
+	.divider:hover {
+		background-image: linear-gradient(var(--accent), var(--accent));
+		background-size: 3px 100%;
 	}
 	.status {
 		display: flex;

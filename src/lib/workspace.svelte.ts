@@ -45,6 +45,15 @@ class Workspace {
 	recent: string | null = $state(null);
 	/** The line the cursor is on in the note in front (0-based), for the outline. */
 	cursorLine = $state(0);
+	/** The note open in the right-hand pane, if the view is split. */
+	split: string | null = $state(null);
+
+	async openSplit(path: string | null) {
+		if (!path || !this.cave || isView(path)) return;
+		if (!this.texts.has(path)) this.texts.set(path, await this.cave.read(path));
+		this.split = path;
+	}
+
 	/** The note whose history is showing. */
 	historyOf: string | null = $state(null);
 
@@ -349,6 +358,7 @@ class Workspace {
 		if (!this.cave) return;
 		await this.cave.remove(path);
 		for (const t of this.tabs) if (t === path || t.startsWith(`${path}/`)) this.closeTab(t);
+		if (this.split && (this.split === path || this.split.startsWith(`${path}/`))) this.split = null;
 		await this.refresh();
 	}
 
@@ -357,6 +367,7 @@ class Workspace {
 		for (const h of this.hooks.renamed) h(from, to);
 		const swap = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : p);
 		this.tabs = this.tabs.map(swap);
+		if (this.split) this.split = swap(this.split);
 		if (this.active) this.active = swap(this.active);
 		for (const [p, t] of [...this.texts]) {
 			if (swap(p) !== p) {

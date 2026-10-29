@@ -1,7 +1,7 @@
 <script lang="ts">
 	// One editor for all tabs. Each note keeps its own editor state (text, undo
 	// history, cursor and scroll), so switching tabs feels instant and nothing is lost.
-	import { EditorState } from "@codemirror/state";
+	import { EditorState, Transaction } from "@codemirror/state";
 	import { EditorView } from "@codemirror/view";
 	import { onMount } from "svelte";
 	import { EditorSelection } from "@codemirror/state";
@@ -54,6 +54,8 @@
 		view = new EditorView({ parent: host, state: stateFor(path, text) });
 		activeEditor.view = view;
 		mounted = true;
+		// Commands (like writing help) act on whichever pane you were last in.
+		view.contentDOM.addEventListener("focus", () => (activeEditor.view = view));
 		shown = path;
 		// Banners stretch across the whole pane, wider than the text column.
 		const measure = new ResizeObserver(() => view && view.dom.style.setProperty("--pane-width", `${view.scrollDOM.clientWidth}px`));
@@ -84,7 +86,7 @@
 		const o = ws.outside;
 		if (!o || !view) return;
 		if (o.path !== shown) return void states.delete(o.path);
-		if (view.state.doc.toString() !== o.text) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: o.text } });
+		if (view.state.doc.toString() !== o.text) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: o.text }, annotations: Transaction.remote.of(true) });
 	});
 
 	// Many notes changed at once (a restored backup): forget every kept state and show the new text.
@@ -94,6 +96,14 @@
 		states.clear();
 		const t = ws.texts.get(shown);
 		if (t != null) view.setState(stateFor(shown, t));
+	});
+
+	// The same note changed somewhere else (the other pane, a live block, the AI) while this
+	// editor isn't the one being typed in: show the new text.
+	$effect(() => {
+		const t = ws.texts.get(path);
+		if (!mounted || !view || t == null || shown !== path || view.hasFocus) return;
+		if (view.state.doc.toString() !== t) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: t }, annotations: Transaction.remote.of(true) });
 	});
 
 	// Live blocks and embeds redraw when any note changes (a moment later, not on every key).
