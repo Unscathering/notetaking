@@ -93,6 +93,9 @@ check again before a public launch.
   opened with Ctrl+click or "Open on the right"); each editor follows
   changes made elsewhere while it isn't focused (marked `Transaction.remote`
   so they aren't saved twice).
+- `src/lib/export.ts`: notes to HTML (with `marked`, loaded only then):
+  PDF through the print window, one self-contained web page, or a folder as
+  a website (desktop app; pages, links between them, pictures, an index).
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and
@@ -197,7 +200,8 @@ Ctrl+Shift+T tags, Ctrl+Shift+O switch cave, Ctrl+Shift+Enter focus mode,
 Ctrl+W close tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Ctrl+\ sidebar,
 Ctrl+, appearance, Ctrl+F find in note, Ctrl+J the AI, Ctrl+Shift+G check
 grammar (selection or whole note), Ctrl+Shift+D today's note, Ctrl+Shift+N
-new note from a template, Ctrl+click a note to open it on the right.
+new note from a template, Ctrl+click a note to open it on the right, Ctrl+Shift+P print or save as
+PDF.
 
 ## Status
 

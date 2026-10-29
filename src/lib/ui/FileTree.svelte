@@ -5,6 +5,7 @@
 </script>
 
 <script lang="ts">
+	import { exportNote } from "../commands";
 	import { slide } from "svelte/transition";
 	import { cubicOut } from "svelte/easing";
 	import { baseName, parentOf, type CaveEntry } from "../cave";
@@ -97,6 +98,7 @@
 						{ label: "New folder here", icon: "folderPlus", run: async () => { const p = await ws.newFolder(entry.path); if (p) ws.renaming = p; } },
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
 						{ label: "Open as a database", icon: "table", run: () => ws.open(`basalt:db:${entry.path}`) },
+						{ label: "Export as a website", icon: "globe", run: () => exportNote("site", entry.path) },
 						{ label: "-" },
 						...looks,
 						{ label: "-" },
@@ -108,6 +110,8 @@
 						{ label: "Rename", icon: "pencil", run: () => (ws.renaming = entry.path) },
 						{ label: "Make this the home page", icon: "home", run: () => ws.setHome(entry.path) },
 						{ label: "History", icon: "clock", run: () => ws.showHistory(entry.path) },
+						{ label: "Print or save as PDF", icon: "file", run: () => exportNote("pdf", entry.path) },
+						{ label: "Save as a web page", icon: "globe", run: () => exportNote("page", entry.path) },
 						{ label: "-" },
 						...looks,
 						{ label: "-" },

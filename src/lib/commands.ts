@@ -13,6 +13,27 @@ import type { Mode } from "./ai/proofread";
 import { today } from "./templates";
 import { recap } from "./recap.svelte";
 
+/** Runs something on the note in front (or the last one), or says to open one. */
+const withNote = (run: (path: string) => unknown) => {
+	const p = ws.note ?? ws.recent;
+	return p ? run(p) : alert("Open a note first.");
+};
+
+/** Exports, saying how it went. */
+export async function exportNote(kind: "pdf" | "page" | "site", path: string) {
+	const ex = await import("./export");
+	try {
+		if (kind === "pdf") await ex.printNote(path);
+		else if (kind === "page") await ex.exportPage(path);
+		else {
+			const where = await ex.exportSite(path);
+			if (where) alert(`The website is in ${where}. Open index.html to see it, or upload the folder to any web host.`);
+		}
+	} catch (e) {
+		alert(`Couldn't export: ${e instanceof Error ? e.message : String(e)}`);
+	}
+}
+
 /** Writing help on the selection, or the whole note if nothing is selected. */
 const help = (mode: Mode) => () => {
 	const view = activeEditor.view;
@@ -63,6 +84,9 @@ export const COMMANDS: Command[] = [
 	{ id: "typewriter", label: "Typewriter scrolling", icon: "type", run: () => (writing.typewriter = !writing.typewriter) },
 	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
 	{ id: "split", label: "Open this note on the right too", icon: "layout", run: () => (ws.split ? (ws.split = null) : ws.openSplit(ws.note ?? ws.recent)) },
+	{ id: "pdf", label: "Print or save as PDF", icon: "file", keys: "Ctrl+Shift+P", run: () => withNote((p) => exportNote("pdf", p)) },
+	{ id: "web-page", label: "Save this note as a web page", icon: "globe", run: () => withNote((p) => exportNote("page", p)) },
+	{ id: "website", label: "Export this folder as a website", icon: "globe", run: () => withNote((p) => exportNote("site", p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "")) },
 	{ id: "close-tab", label: "Close tab", icon: "x", keys: "Ctrl+W", run: () => ws.active && ws.closeTab(ws.active) },
 	{ id: "set-home", label: "Make this note the home page", icon: "home", run: () => ws.note && ws.setHome(ws.note) },
 	{ id: "history", label: "History of this note", icon: "clock", run: () => (ws.note || ws.recent ? ws.showHistory(ws.note ?? ws.recent) : alert("Open a note first.")) },
