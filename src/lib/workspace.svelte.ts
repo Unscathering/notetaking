@@ -49,6 +49,8 @@ class Workspace {
 	recent: string | null = $state(null);
 	/** The line the cursor is on in the note in front (0-based), for the outline. */
 	cursorLine = $state(0);
+	/** How many words are selected in the note in front. */
+	selectedWords = $state(0);
 	/** The note open in the right-hand pane, if the view is split. */
 	split: string | null = $state(null);
 
@@ -356,14 +358,14 @@ class Workspace {
 	}
 
 	/** Follows a [[link]]: opens the note, or makes it first. */
-	async follow(target: string) {
+	async follow(target: string, newTab = false) {
 		if (!this.cave) return;
 		const found = this.resolve(target);
-		if (found) return this.open(found);
+		if (found) return this.open(found, { newTab });
 		const name = baseName(target);
-		const path = await this.cave.create(parentOf(target), name, `# ${name}\n\n`);
+		const path = await this.cave.create(parentOf(target), name, writing.inlineTitle ? "" : `# ${name}\n\n`);
 		await this.refresh();
-		await this.open(path);
+		await this.open(path, { newTab });
 	}
 
 	/** A note that was just made, so its title opens selected, ready to be named. */

@@ -44,6 +44,7 @@
 	import { inDesktopApp, noteTitle, pickCave } from "./lib/cave";
 	import { isNewTab, isView, startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
 	import NewTab from "./lib/ui/NewTab.svelte";
+	import { showMenu } from "./lib/ui/ContextMenu.svelte";
 	import WindowControls from "./lib/ui/WindowControls.svelte";
 	import ViewHeader from "./lib/ui/ViewHeader.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
@@ -130,6 +131,28 @@
 	// The desktop app draws its own window buttons (no title bar); try it in a browser with basalt.dev-frame.
 	const frameless = inDesktopApp || (() => { try { return !!localStorage.getItem("basalt.dev-frame"); } catch { return false; } })();
 
+	/** Right-click on a tab. */
+	function tabMenu(e: MouseEvent, path: string) {
+		const i = ws.tabs.indexOf(path);
+		showMenu(e, [
+			{ label: "Close", icon: "x", run: () => ws.closeTab(path) },
+			{ label: "Close others", icon: "x", run: () => ws.tabs.filter((t) => t !== path).forEach((t) => ws.closeTab(t)) },
+			{ label: "Close tabs to the right", icon: "x", run: () => ws.tabs.slice(i + 1).forEach((t) => ws.closeTab(t)) },
+			...(isView(path) ? [] : [{ label: "-" }, { label: "Open on the right", icon: "layout" as const, run: () => ws.openSplit(path) }]),
+		]);
+	}
+
+	/** Dragging tabs into a new order. */
+	let draggingTab: string | null = $state(null);
+	function dropTab(on: string) {
+		const from = draggingTab;
+		draggingTab = null;
+		if (!from || from === on) return;
+		const rest = ws.tabs.filter((t) => t !== from);
+		rest.splice(rest.indexOf(on) + (ws.tabs.indexOf(from) < ws.tabs.indexOf(on) ? 1 : 0), 0, from);
+		ws.tabs = rest;
+	}
+
 	async function chooseCave() {
 		const cave = await pickCave();
 		if (cave) await ws.load(cave);
@@ -187,7 +210,7 @@
 		<div class="tabbar" data-tauri-drag-region>
 			<div class="tabs" role="tablist" data-tauri-drag-region>
 				{#each ws.tabs as path (path)}
-					<div class="tab" class:is-active={ws.active === path} animate:flip={{ duration: ms }} role="tab" aria-selected={ws.active === path}>
+					<div class="tab" class:is-active={ws.active === path} class:is-dragging={draggingTab === path} animate:flip={{ duration: ms }} role="tab" tabindex="-1" aria-selected={ws.active === path} draggable="true" ondragstart={() => (draggingTab = path)} ondragend={() => (draggingTab = null)} ondragover={(e) => draggingTab && e.preventDefault()} ondrop={() => dropTab(path)} oncontextmenu={(e) => tabMenu(e, path)}>
 						<button class="tab-label" onclick={() => ws.open(path)} onauxclick={(e) => e.button === 1 && ws.closeTab(path)}>
 							{#if viewInfo(path)}<span class="tab-ico">{@html icon(viewInfo(path)!.icon, 13)}</span>{viewInfo(path)!.label}{:else}{#if isBoard(path)}<span class="tab-ico">{@html icon("board", 13)}</span>{/if}{noteTitle(path)}{/if}
 						</button>
@@ -221,7 +244,7 @@
 				{#if isBoard(ws.active)}
 					<div class="raw-bar">Editing this board as Markdown. <button onclick={() => ws.active && ws.showBoard(ws.active)}>{@html icon("board", 13)} Back to the board</button></div>
 				{/if}
-				<Editor path={ws.active} text={ws.texts.get(ws.active) ?? ""} onchange={(p, t) => ws.edited(p, t)} onopenlink={(t) => ws.follow(t)} />
+				<Editor path={ws.active} text={ws.texts.get(ws.active) ?? ""} onchange={(p, t) => ws.edited(p, t)} onopenlink={(t, newTab) => ws.follow(t, newTab)} />
 			{:else}
 				<div class="start">
 					<p>No note open.</p>
@@ -244,7 +267,7 @@
 			{#if ws.note && !isView(ws.note)}
 				<button class="mode" class:on={ws.isViewing(ws.note)} onclick={() => ws.note && ws.toggleView(ws.note)} title="Switch between viewing and editing (Ctrl+E)">{@html icon(ws.isViewing(ws.note) ? "eye" : "pencil", 12)} {ws.isViewing(ws.note) ? "Viewing" : "Editing"}</button>
 			{/if}
-			<span>{words} {words === 1 ? "word" : "words"}</span>
+			<span title={`About ${Math.max(1, Math.round(words / 230))} min to read`}>{ws.selectedWords ? `${ws.selectedWords} of ${words}` : words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>
 	</main>
@@ -495,6 +518,9 @@
 		border-radius: var(--radius) var(--radius) 0 0;
 		color: var(--muted);
 		transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.tab.is-dragging {
+		opacity: 0.4;
 	}
 	.tab:hover {
 		color: var(--text);

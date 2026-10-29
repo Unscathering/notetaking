@@ -2,7 +2,7 @@
 // make it (# ** ` [[ ]] >) step out of the way on lines you are not editing.
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder, type EditorState, type Range } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, hoverTooltip, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
 const hide = Decoration.replace({});
 const lineClass = (cls: string) => Decoration.line({ class: cls });
@@ -202,6 +202,23 @@ function build(view: EditorView): DecorationSet {
 		}
 	}
 	// Builders need ranges in order; decorations from the two passes interleave.
+	// "-> centered <-": the line sits in the middle (headings too: "## -> Title <-").
+	for (const { from, to } of view.visibleRanges) {
+		for (let pos = from; pos <= to; ) {
+			const line = state.doc.lineAt(pos);
+			const m = /^(#{1,6}\s+)?(->\s?)(.*?)(\s?<-)\s*$/.exec(line.text);
+			if (m && m[3].trim()) {
+				decos.push(lineClass("cm-center").range(line.from));
+				if (!isActive(line.from)) {
+					const open = line.from + (m[1]?.length ?? 0);
+					decos.push(hide.range(open, open + m[2].length));
+					const close = open + m[2].length + m[3].length;
+					decos.push(hide.range(close, close + m[4].length));
+				}
+			}
+			pos = line.to + 1;
+		}
+	}
 	decos.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
 	const builder = new RangeSetBuilder<Decoration>();
 	for (const d of decos) builder.add(d.from, d.to, d.value);
@@ -222,14 +239,61 @@ export const livePreview = ViewPlugin.fromClass(
 );
 
 /** Calls `open` with the note name when a [[link]] is clicked. */
-export const wikilinkClicks = (open: (target: string) => void) =>
+export const wikilinkClicks = (open: (target: string, newTab?: boolean) => void) =>
 	EditorView.domEventHandlers({
 		mousedown(e) {
 			const el = (e.target as HTMLElement).closest<HTMLElement>(".cm-wikilink");
-			if (!el?.dataset.target || e.button !== 0) return false;
-			// Ctrl-click or a click on a line you are not editing follows the link.
+			if (!el?.dataset.target || (e.button !== 0 && e.button !== 1)) return false;
+			// A click on a line you are not editing follows the link; Ctrl-click or the middle button opens it in a new tab.
 			e.preventDefault();
-			open(el.dataset.target);
+			open(el.dataset.target, e.button === 1 || e.ctrlKey || e.metaKey);
 			return true;
 		},
 	});
+
+/** Whether Ctrl (or Cmd) is held, for link previews while editing. */
+let ctrlDown = false;
+if (typeof window !== "undefined") {
+	const track = (e: KeyboardEvent | MouseEvent) => (ctrlDown = e.ctrlKey || e.metaKey);
+	window.addEventListener("keydown", track, true);
+	window.addEventListener("keyup", track, true);
+	window.addEventListener("mousemove", track, { passive: true, capture: true });
+}
+
+/**
+ * A peek at a linked note: hover a [[link]] while holding Ctrl (or just hover,
+ * in view mode) to see how the note starts, without leaving this one.
+ */
+export const linkPreview = (peek: (target: string) => { title: string; text: string } | null) =>
+	hoverTooltip(
+		(view, pos) => {
+			if (!view.state.readOnly && !ctrlDown) return null;
+			const line = view.state.doc.lineAt(pos);
+			for (const m of line.text.matchAll(WIKILINK)) {
+				const from = line.from + m.index!, to = from + m[0].length;
+				if (pos < from || pos > to) continue;
+				const target = m[1].trim();
+				const note = peek(target.split("#")[0]);
+				if (!note) return null;
+				return {
+					pos: from,
+					end: to,
+					above: false,
+					create() {
+						const dom = document.createElement("div");
+						dom.className = "cm-peek";
+						const title = document.createElement("div");
+						title.className = "cm-peek-title";
+						title.textContent = note.title;
+						const body = document.createElement("div");
+						body.className = "cm-peek-body";
+						body.textContent = note.text || "(Empty note)";
+						dom.append(title, body);
+						return { dom };
+					},
+				};
+			}
+			return null;
+		},
+		{ hoverTime: 350 },
+	);

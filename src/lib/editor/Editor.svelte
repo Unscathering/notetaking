@@ -20,7 +20,7 @@
 		path: string;
 		text: string;
 		onchange: (path: string, text: string) => void;
-		onopenlink: (target: string) => void;
+		onopenlink: (target: string, newTab?: boolean) => void;
 	}
 	let { path, text, onchange, onopenlink }: Props = $props();
 
@@ -47,7 +47,7 @@
 			selection: { anchor: Math.min(start, initial.length) },
 			extensions: editorExtensions({
 				onChange: (t) => onchange(home.p, t),
-				openLink: (target) => onopenlink(target),
+				openLink: (target, newTab) => onopenlink(target, newTab),
 				noteNames: () => ws.notes.map((n) => n.replace(/\.md$/i, "")),
 				pickImage: () => ws.pickImage(),
 				saveImage: (bytes, ext) => ws.saveImage(bytes, ext),
@@ -55,6 +55,14 @@
 				...helpHooks,
 				live: liveHooksFor(() => home.p),
 				onCursor: (line) => (ws.cursorLine = line),
+				onSelection: (n) => (ws.selectedWords = n),
+				peek: (target) => {
+					const found = ws.resolve(target);
+					if (!found) return null;
+					const t = ws.texts.get(found) ?? "";
+					const body = t.slice(frontmatterRange(t)?.to ?? 0).replace(/^\s+/, "").replace(/^#\s+.*\n+/, "").replace(/```basalt[\s\S]*?```/g, "").slice(0, 700);
+					return { title: noteTitle(found), text: body };
+				},
 				title:
 					writing.inlineTitle && !isView(p)
 						? {

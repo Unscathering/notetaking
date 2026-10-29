@@ -8,7 +8,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { Compartment, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import { livePreview, wikilinkClicks } from "./livePreview";
+import { linkPreview, livePreview, wikilinkClicks } from "./livePreview";
 import { noteHeader } from "./properties";
 import { titleSync, type TitleHooks } from "./inlineTitle";
 import { suggestions, type SuggestHooks } from "./suggest";
@@ -87,6 +87,11 @@ const look = EditorView.theme({
 	".basalt-inline-title": { margin: "0 0 10px", outline: "none", color: "var(--heading)", font: "var(--heading-weight, 700) calc(1em * var(--heading-scale) * var(--heading-scale) * var(--heading-scale)) var(--font-heading, var(--font-editor))", letterSpacing: "-0.015em", lineHeight: "1.2", overflowWrap: "anywhere", caretColor: "var(--accent)" },
 	".cm-banner + .basalt-inline-title": { marginTop: "14px" },
 	".cm-props.no-props": { borderBottom: "0", paddingBottom: "6px" },
+	".cm-tooltip.cm-tooltip-hover:has(.cm-peek)": { border: "1px solid var(--border)", borderRadius: "var(--radius)", backgroundColor: "var(--surface-float)", backgroundImage: "var(--glass-grain)", backdropFilter: "var(--float-filter)", boxShadow: "var(--glass-edge), 0 14px 34px rgba(0,0,0,0.35)" },
+	".cm-tooltip-hover:has(.cm-peek)": { pointerEvents: "none" },
+	".cm-peek": { width: "340px", maxHeight: "260px", overflow: "hidden", padding: "12px 14px", fontFamily: "var(--font-ui)" },
+	".cm-peek-title": { marginBottom: "6px", color: "var(--heading)", fontWeight: "700", fontSize: "14px" },
+	".cm-peek-body": { color: "var(--text)", fontSize: "12.5px", lineHeight: "1.5", whiteSpace: "pre-wrap", maskImage: "linear-gradient(to bottom, black 70%, transparent)" },
 	".cm-props": { padding: "0 2px 18px", marginBottom: "6px", borderBottom: "1px solid var(--border)", fontFamily: "var(--font-ui)" },
 	".cm-props-desc": { width: "100%", padding: "2px 0", border: "0", outline: "0", background: "transparent", color: "var(--muted)", font: "italic 1.02em var(--font-editor)" },
 	".cm-props-desc:focus": { color: "var(--text)" },
@@ -144,10 +149,14 @@ const look = EditorView.theme({
 
 export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks, WritingHelpHooks {
 	onChange(text: string): void;
-	openLink(target: string): void;
+	openLink(target: string, newTab?: boolean): void;
 	live: LiveHooks;
 	/** The line the cursor moved to (0-based). */
 	onCursor?(line: number): void;
+	/** How many words are selected (0 for none). */
+	onSelection?(words: number): void;
+	/** A linked note's name and how it starts, for the hover preview. */
+	peek?(target: string): { title: string; text: string } | null;
 	/** The note's name shown big above it (left out when inline titles are off). */
 	title?: TitleHooks;
 }
@@ -180,6 +189,7 @@ export function editorExtensions(hooks: EditorHooks, reading = false): Extension
 		typewriter,
 		dimOthers,
 		wikilinkClicks(hooks.openLink),
+		hooks.peek ? linkPreview(hooks.peek) : [],
 		writingHelp(hooks),
 		liveBlocks(hooks.live),
 		look,
@@ -189,6 +199,10 @@ export function editorExtensions(hooks: EditorHooks, reading = false): Extension
 			// Text that came from elsewhere (another pane, the AI) is already saved.
 			if (u.docChanged && !u.transactions.some((t) => t.annotation(Transaction.remote))) hooks.onChange(u.state.doc.toString());
 			if (u.selectionSet || u.docChanged) hooks.onCursor?.(u.state.doc.lineAt(u.state.selection.main.head).number - 1);
+			if (u.selectionSet) {
+				const sel = u.state.selection.main;
+				hooks.onSelection?.(sel.empty ? 0 : u.state.sliceDoc(sel.from, Math.min(sel.to, sel.from + 200_000)).split(/\s+/).filter(Boolean).length);
+			}
 		}),
 	];
 }

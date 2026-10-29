@@ -70,6 +70,15 @@
 		</div>
 	</div>
 	<div class="row">
+		<span class="label">Position</span>
+		<div class="st-chips">
+			{#each [["left", "Left"], ["title", "Title and top headings centered"], ["all", "All centered"]] as [id, name] (id)}
+				<button class="st-chip" class:is-on={(theme.headings.align ?? "left") === id} onclick={() => (theme.headings.align = id as "left" | "title" | "all")}>{name}</button>
+			{/each}
+		</div>
+	</div>
+	<p class="st-sub tip">To center one line anywhere, write it as <code>-&gt; like this &lt;-</code> (works on headings too).</p>
+	<div class="row">
 		<span class="label">Weight</span>
 		<div class="st-chips">
 			{#each WEIGHTS as [w, name] (w)}

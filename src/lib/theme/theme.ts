@@ -45,6 +45,8 @@ export interface Theme {
 		/** Empty means the same font as the note. */
 		font: string;
 		weight: number;
+		/** Where headings sit: on the left, the title and top headings centered, or every heading centered. */
+		align: "left" | "title" | "all";
 	};
 	shape: {
 		/** Corner rounding in pixels. */
@@ -166,7 +168,7 @@ const base = (name: string, colors: Theme["colors"], bits: PresetBits = {}): The
 	name,
 	colors,
 	type: { uiFont: SANS, editorFont: SANS, codeFont: MONO, size: 16, lineHeight: 1.65, width: 72, headingScale: 1.25, ...bits.type },
-	headings: { style: "plain", font: "", weight: 700, ...bits.headings },
+	headings: { style: "plain", font: "", weight: 700, align: "left", ...bits.headings },
 	shape: { radius: 8, density: 1, sidebarWidth: 260, bannerHeight: 220, ...bits.shape },
 	background: { kind: "none", wallpaper: "aurora", image: "", media: "", mediaKind: "image", blur: 0, fade: 30, ...bits.background },
 	glass: { material: "solid", tint: 70, blur: 18, page: 100, floating: false, seamless: false, ...bits.glass },
@@ -329,6 +331,7 @@ export function applyTheme(t: Theme, root: HTMLElement = document.documentElemen
 	// glass surface at once, which on some Windows PCs leaves parts unpainted.
 	for (const [k, v] of Object.entries(themeVars(t))) if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v);
 	root.dataset.headings = t.headings.style;
+	root.dataset.headingAlign = t.headings.align ?? "left";
 	root.dataset.material = t.glass.material;
 	root.dataset.marker = t.sidebar.marker ? "on" : "off";
 	root.dataset.light = isLight(t) ? "yes" : "no";

@@ -165,7 +165,7 @@ export const TOOLS = [
 	fn(
 		"change_appearance",
 		"Propose changing how the app looks. Give only what should change. Call get_appearance first to see the choices.",
-		{ theme: s("A theme name, applied first."), accent: s("Accent color, #hex or a color name."), material: s("solid, transparent, glass, frosted or liquid."), wallpaper: s("A wallpaper name, or 'none'."), heading_style: s("plain, underline, bar, accent, gradient or caps."), note_font: s("A font name."), sidebar_style: s("A sidebar style name."), corners: n("Corner rounding in pixels, 0 to 24."), text_size: n("Note text size in pixels, 12 to 26.") }
+		{ theme: s("A theme name, applied first."), accent: s("Accent color, #hex or a color name."), material: s("solid, transparent, glass, frosted or liquid."), wallpaper: s("A wallpaper name, or 'none'."), heading_style: s("plain, underline, bar, accent, gradient or caps."), heading_position: s("left, title (the title and top headings centered) or center (every heading centered)."), note_font: s("A font name."), sidebar_style: s("A sidebar style name."), corners: n("Corner rounding in pixels, 0 to 24."), text_size: n("Note text size in pixels, 12 to 26.") }
 	),
 	fn("remember", "Save one new, lasting fact about the person (their likes, projects, how they like to work) to your memory note. Not about the cave, its notes or folders, and never something already in your memory. At most once or twice per message.", { fact: s("One short sentence."), about: s('"person" (default) or "project": a fact about the project this chat belongs to, if it has one.') }, ["fact"]),
 ];
@@ -876,6 +876,8 @@ function changeAppearance(a: Args) {
 		const id = Object.keys(WALLPAPERS).find((k) => WALLPAPERS[k].name.toLowerCase() === wall || k === wall);
 		if (id) Object.assign(theme.background, { kind: "wallpaper", wallpaper: id });
 	}
+	const pos = str(a.heading_position).toLowerCase();
+	if (pos) theme.headings.align = pos === "title" ? "title" : /cent|middle|all/.test(pos) ? "all" : "left";
 	const hs = str(a.heading_style).toLowerCase();
 	if (["plain", "underline", "bar", "accent", "gradient", "caps"].includes(hs)) theme.headings.style = hs as HeadingStyle;
 	const font = Object.keys(FONT_CHOICES).find((f) => f.toLowerCase() === str(a.note_font).toLowerCase());

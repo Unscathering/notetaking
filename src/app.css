@@ -48,6 +48,16 @@ select:focus-visible {
 }
 
 /* Heading styles, chosen in Appearance > Text. */
+/* Centered headings (Appearance → Text & headings, or cssclass: center-headings), and "-> line <-". */
+.cm-editor .cm-center,
+:root[data-heading-align="title"] .basalt-inline-title,
+:root[data-heading-align="title"] .cm-editor .cm-h1,
+:root[data-heading-align="all"] .basalt-inline-title,
+:root[data-heading-align="all"] .cm-editor .cm-h,
+.note-center-headings .basalt-inline-title,
+.note-center-headings .cm-editor .cm-h {
+	text-align: center;
+}
 :root[data-headings="underline"] .cm-editor .cm-h1,
 :root[data-headings="underline"] .cm-editor .cm-h2 {
 	padding-bottom: 0.18em;
