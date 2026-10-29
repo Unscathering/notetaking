@@ -229,6 +229,12 @@ fn reasons(e: &dyn std::error::Error) -> String {
 /// How many pieces a big download is split into. Hugging Face and GitHub limit
 /// each connection's speed, so several at once finish much sooner.
 const PIECES: u64 = 8;
+/// The download goes in parts this big, PIECES at a time, in order: a slow
+/// connection only holds up one small part, and the file fills from the front
+/// (Windows otherwise stops to fill the gap before a write far into the file).
+const PART: u64 = 64 * 1024 * 1024;
+/// A connection that sends nothing for this long is dropped and started again.
+const STALL: Duration = Duration::from_secs(20);
 
 /// Opens a download: tries the normal way, then the old-fashioned way
 /// (HTTP/1.1) if that can't connect. Asks for the first byte only, to learn the
@@ -273,16 +279,17 @@ async fn fetch(engine: &Engine, url: &str, dest: &Path, progress: impl Fn(u64, u
         .and_then(|v| v.rsplit('/').next())
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|_| probe.status() == reqwest::StatusCode::PARTIAL_CONTENT);
-    let real_url = probe.url().to_string();
     drop(probe);
     let part = dest.with_extension("part");
     let done = AtomicU64::new(0);
+    let started = std::time::Instant::now();
+    // Milliseconds since the start when progress was last shown: a few times a second is plenty.
     let shown = AtomicU64::new(0);
     let tick = |n: u64, total: u64| {
         let now = done.fetch_add(n, Ordering::SeqCst) + n;
-        let last = shown.load(Ordering::SeqCst);
-        if now - last > 1_000_000 || now == total {
-            shown.store(now, Ordering::SeqCst);
+        let ms = started.elapsed().as_millis() as u64;
+        if ms - shown.load(Ordering::SeqCst) >= 200 || now == total {
+            shown.store(ms, Ordering::SeqCst);
             progress(now, total);
         }
     };
@@ -291,13 +298,17 @@ async fn fetch(engine: &Engine, url: &str, dest: &Path, progress: impl Fn(u64, u
             let file = tokio::fs::File::create(&part).await.map_err(|e| e.to_string())?;
             file.set_len(total).await.map_err(|e| e.to_string())?;
             drop(file);
-            let size = total.div_ceil(PIECES);
-            let pieces = (0..PIECES).map(|i| (i * size, ((i + 1) * size).min(total))).filter(|(a, b)| a < b);
-            futures_util::future::try_join_all(pieces.map(|(from, to)| piece(&http, engine, &real_url, &part, from, to, |n| tick(n, total))))
+            let parts = (0..total.div_ceil(PART)).map(|i| (i * PART, ((i + 1) * PART).min(total)));
+            // Each part asks for the original link again, so a link that only works for a while (as Hugging Face's do) is always fresh.
+            futures_util::stream::iter(parts.map(|(from, to)| piece(&http, engine, url, &part, from, to, |n| tick(n, total))))
+                .buffer_unordered(PIECES as usize)
+                .collect::<Vec<_>>()
                 .await
+                .into_iter()
+                .collect::<Result<Vec<()>, String>>()
                 .map(|_| ())
         }
-        _ => whole(&http, engine, &real_url, &part, &tick).await,
+        _ => whole(&http, engine, url, &part, &tick).await,
     };
     if let Err(e) = result {
         let _ = tokio::fs::remove_file(&part).await;
@@ -308,53 +319,61 @@ async fn fetch(engine: &Engine, url: &str, dest: &Path, progress: impl Fn(u64, u
 }
 
 /// Fetches bytes `from..to` into their place in the file. If the connection
-/// drops, it carries on from where it stopped (a few times).
+/// drops or stalls, it carries on from where it stopped.
 async fn piece(http: &reqwest::Client, engine: &Engine, url: &str, part: &Path, from: u64, to: u64, tick: impl Fn(u64)) -> Result<(), String> {
     use tokio::io::AsyncSeekExt;
-    let mut file = tokio::fs::OpenOptions::new().write(true).open(part).await.map_err(|e| e.to_string())?;
+    let file = tokio::fs::OpenOptions::new().write(true).open(part).await.map_err(|e| e.to_string())?;
+    let mut out = tokio::io::BufWriter::with_capacity(1 << 20, file);
+    out.seek(std::io::SeekFrom::Start(from)).await.map_err(|e| e.to_string())?;
     let mut at = from;
+    // Tries in a row without getting anywhere.
     let mut tries = 0;
     while at < to {
-        if tries > 4 {
+        if engine.cancel_download.load(Ordering::SeqCst) {
+            return Err("Download stopped.".into());
+        }
+        if tries > 5 {
             return Err("The download kept getting cut off. Try again in a little while.".into());
         }
-        let before = at;
-        let res = http.get(url).header("Range", format!("bytes={}-{}", at, to - 1)).send().await;
+        if tries > 0 {
+            tokio::time::sleep(Duration::from_secs(tries)).await;
+        }
+        let res = tokio::time::timeout(STALL, http.get(url).header("Range", format!("bytes={}-{}", at, to - 1)).send()).await;
         let mut stream = match res {
-            Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r.bytes_stream(),
-            Ok(r) => return Err(format!("The download failed ({}).", r.status())),
-            Err(_) if tries < 4 => {
+            Ok(Ok(r)) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r.bytes_stream(),
+            Ok(Ok(r)) if r.status().is_server_error() || r.status() == reqwest::StatusCode::TOO_MANY_REQUESTS => {
                 tries += 1;
-                tokio::time::sleep(Duration::from_secs(tries)).await;
                 continue;
             }
-            Err(e) => return Err(format!("The download was interrupted: {}", reasons(&e))),
+            Ok(Ok(r)) => return Err(format!("The download failed ({}).", r.status())),
+            Ok(Err(e)) if tries >= 5 => return Err(format!("The download was interrupted: {}", reasons(&e))),
+            _ => {
+                tries += 1;
+                continue;
+            }
         };
-        file.seek(std::io::SeekFrom::Start(at)).await.map_err(|e| e.to_string())?;
-        while let Some(chunk) = stream.next().await {
+        let before = at;
+        loop {
             if engine.cancel_download.load(Ordering::SeqCst) {
                 return Err("Download stopped.".into());
             }
-            match chunk {
-                Ok(c) => {
+            match tokio::time::timeout(STALL, stream.next()).await {
+                Ok(Some(Ok(c))) => {
                     let c = &c[..c.len().min((to - at) as usize)];
-                    file.write_all(c).await.map_err(|e| e.to_string())?;
+                    out.write_all(c).await.map_err(|e| e.to_string())?;
                     at += c.len() as u64;
                     tick(c.len() as u64);
+                    if at >= to {
+                        break;
+                    }
                 }
-                Err(_) if tries < 4 => {
-                    tries += 1;
-                    break;
-                }
-                Err(e) => return Err(format!("The download was interrupted: {}", reasons(&e))),
+                // Ended early, broke, or went quiet: ask again from here.
+                _ => break,
             }
         }
-        // Cut off without getting anywhere: that counts as a try.
-        if at == before {
-            tries += 1;
-        }
+        tries = if at > before { 0 } else { tries + 1 };
     }
-    file.flush().await.map_err(|e| e.to_string())
+    out.flush().await.map_err(|e| e.to_string())
 }
 
 /// For servers that can't send pieces: one connection, start to finish.
