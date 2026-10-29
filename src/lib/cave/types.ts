@@ -19,6 +19,8 @@ export interface CaveMeta {
 	/** Hand-picked order of each folder's contents (names), keyed by folder path ("" is the top). */
 	order: Record<string, string[]>;
 	looks: Record<string, EntryLook>;
+	/** CSS snippets that are turned on (file names in .basalt/snippets). */
+	snippets?: string[];
 }
 
 export const emptyMeta = (): CaveMeta => ({ order: {}, looks: {} });
@@ -41,6 +43,8 @@ export interface Cave {
 	rename(from: string, to: string): Promise<void>;
 	remove(path: string): Promise<void>;
 	exists(path: string): Promise<boolean>;
+	/** The names of the files directly in a folder, hidden ones too (like .basalt/snippets). */
+	listDir(path: string): Promise<string[]>;
 	/** Images and other files that are not text. */
 	writeBytes(path: string, bytes: Uint8Array): Promise<void>;
 	/** A URL the page can show, for images in the cave. */

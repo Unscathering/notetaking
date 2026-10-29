@@ -92,6 +92,36 @@ tags: [book]
 ## What I'll do differently
 
 `,
+	Dashboard: `---
+cssclass: dashboard
+---
+# Dashboard
+
+\`\`\`basalt
+title: Due this week
+list: tasks
+due: week
+show: list
+\`\`\`
+
+\`\`\`basalt
+title: Open tasks
+list: tasks
+show: count
+\`\`\`
+
+\`\`\`basalt
+title: Projects
+from: Projects
+show: cards
+\`\`\`
+
+\`\`\`basalt
+title: Tags
+list: tags
+limit: 12
+\`\`\`
+`,
 	Board: `---
 basalt: board
 ---

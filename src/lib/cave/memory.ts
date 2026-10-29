@@ -71,6 +71,11 @@ export class MemoryCave implements Cave {
 		return path;
 	}
 
+	async listDir(path: string) {
+		const prefix = `${path}/`;
+		return [...this.files.keys()].filter((p) => p.startsWith(prefix) && !p.slice(prefix.length).includes("/")).map((p) => p.slice(prefix.length));
+	}
+
 	async mkdir(path: string) {
 		this.folders.add(path);
 		this.save();

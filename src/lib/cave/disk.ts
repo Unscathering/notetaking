@@ -63,6 +63,11 @@ export class DiskCave implements Cave {
 		return path;
 	}
 
+	async listDir(path: string) {
+		if (!(await exists(this.abs(path)))) return [];
+		return (await readDir(this.abs(path))).filter((e) => e.isFile).map((e) => e.name);
+	}
+
 	mkdir(path: string) {
 		return mkdir(this.abs(path), { recursive: true });
 	}

@@ -8,14 +8,16 @@
 		ico: IconName;
 		checked: boolean;
 		hint?: string;
+		/** Called with the new value when it's flipped. */
+		onchange?: (on: boolean) => void;
 	}
-	let { title, about, ico, checked = $bindable(), hint }: Props = $props();
+	let { title, about, ico, checked = $bindable(), hint, onchange }: Props = $props();
 </script>
 
 <label class="switch-card" class:is-on={checked}>
 	<span class="ico">{@html icon(ico, 18)}</span>
 	<span class="words"><b>{title}</b><span>{about}</span>{#if hint}<kbd>{hint}</kbd>{/if}</span>
-	<input type="checkbox" bind:checked />
+	<input type="checkbox" bind:checked onchange={() => onchange?.(checked)} />
 	<span class="switch" aria-hidden="true"><i></i></span>
 </label>
 

@@ -11,6 +11,9 @@
 	import { writing } from "../writing.svelte";
 	import { helpHooks } from "../ai/writer";
 	import { activeEditor } from "./active";
+	import { liveHooksFor } from "../liveHooks";
+	import { refreshLive } from "./liveBlocks";
+	import { readProps } from "../notes";
 
 	interface Props {
 		path: string;
@@ -41,6 +44,7 @@
 				saveImage: (bytes, ext) => ws.saveImage(bytes, ext),
 				imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
 				...helpHooks,
+				live: liveHooksFor(p),
 			}),
 		});
 	}
@@ -48,6 +52,7 @@
 	onMount(() => {
 		view = new EditorView({ parent: host, state: stateFor(path, text) });
 		activeEditor.view = view;
+		mounted = true;
 		shown = path;
 		// Banners stretch across the whole pane, wider than the text column.
 		const measure = new ResizeObserver(() => view && view.dom.style.setProperty("--pane-width", `${view.scrollDOM.clientWidth}px`));
@@ -88,6 +93,34 @@
 		states.clear();
 		const t = ws.texts.get(shown);
 		if (t != null) view.setState(stateFor(shown, t));
+	});
+
+	// Live blocks and embeds redraw when any note changes (a moment later, not on every key).
+	let liveTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		for (const t of ws.texts.values()) void t;
+		void ws.meta.looks;
+		clearTimeout(liveTimer);
+		liveTimer = setTimeout(() => {
+			const doc = view?.state.doc.toString() ?? "";
+			if (view && (doc.includes("```basalt") || doc.includes("![["))) view.dispatch({ effects: refreshLive.of(Date.now()) });
+		}, 300);
+	});
+
+	let noteClasses: string[] = [];
+	let mounted = $state(false);
+	// `cssclass: dashboard` (or cssclasses) in a note's properties: classes around its editor, for snippets
+	// (`dashboard` and `note-dashboard`).
+	$effect(() => {
+		if (!mounted) return;
+		const props = readProps(ws.texts.get(path) ?? text);
+		const names = `${props.other.cssclass ?? ""} ${props.other.cssclasses ?? ""}`.split(/[\s,\[\]]+/).map((c) => c.replace(/["']/g, "")).filter((c) => /^[\w-]+$/.test(c));
+		const classes = [...new Set(names.flatMap((c) => [c, c.startsWith("note-") ? c : `note-${c}`]))];
+		// On the wrapper: CodeMirror manages the editor element's own classes.
+		host.classList.remove(...noteClasses);
+		host.classList.add(...classes);
+		noteClasses = classes;
+		host.dataset.cssclass = classes.join(" ");
 	});
 
 	// Spell check follows the writing setting.

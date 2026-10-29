@@ -35,6 +35,12 @@ const BLOCKS: Array<{ label: string; detail: string; text: string; keywords?: st
 	{ label: "Table", detail: "3 × 2", text: "| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| | | |\n", keywords: "grid" },
 	{ label: "Divider", detail: "———", text: "---\n|", keywords: "hr rule line" },
 	{ label: "Link to a note", detail: "[[ ]]", text: "[[|]]", keywords: "wiki" },
+	{ label: "Embed a note", detail: "![[ ]]", text: "![[|]]", keywords: "transclude include show" },
+	{ label: "Live list of notes", detail: "basalt", text: "```basalt\nfrom: |\nshow: list\n```", keywords: "query dataview dashboard folder" },
+	{ label: "Live cards", detail: "basalt", text: "```basalt\nfrom: |\nshow: cards\n```", keywords: "query dataview dashboard gallery" },
+	{ label: "Live table", detail: "basalt", text: "```basalt\nfrom: |\nshow: table\ncolumns: status\n```", keywords: "query dataview dashboard database" },
+	{ label: "Open tasks", detail: "basalt", text: "```basalt\nlist: tasks|\n```", keywords: "query todo dashboard checklist" },
+	{ label: "Links to this note", detail: "basalt", text: "```basalt\nlist: backlinks|\n```", keywords: "backlinks query" },
 	{ label: "Today's date", detail: "", text: "", keywords: "date now" },
 ];
 

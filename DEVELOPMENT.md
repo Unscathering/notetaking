@@ -76,6 +76,14 @@ check again before a public launch.
   date, checklist items with `due:`, `📅` or `@` and a date). The ✨ beside
   a week runs `src/lib/recap.svelte.ts`, which has the AI write that week's
   recap into `Daily/<year>-W<week> recap.md`, filling in live.
+- Modding (the user-facing guide is `MODDING.md`): `src/lib/snippets.svelte.ts`
+  and `ui/settings/SnippetsPage.svelte` (CSS files in `.basalt/snippets`,
+  turned on per cave in `meta.snippets`, put in the page as `<style
+  data-snippet>`); `cssclass` in a note's properties puts classes on the
+  editor's wrapper (`Editor.svelte`); `src/lib/query.ts` runs ```basalt
+  blocks and `editor/liveBlocks.ts` draws them and `![[embeds]]`, with
+  `liveHooks.ts` connecting them to the cave. `Cave.listDir` lists hidden
+  folders.
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

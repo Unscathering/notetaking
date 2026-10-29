@@ -22,6 +22,7 @@
 	import SidebarPage from "./settings/SidebarPage.svelte";
 	import MotionPage from "./settings/MotionPage.svelte";
 	import WritingPage from "./settings/WritingPage.svelte";
+	import SnippetsPage from "./settings/SnippetsPage.svelte";
 
 	interface Props {
 		ms: number;
@@ -39,6 +40,7 @@
 		{ id: "layout", label: "Layout", ico: "layout", title: "Layout", about: "Corners, spacing and the size of things.", page: LayoutPage },
 		{ id: "motion", label: "Motion", ico: "zap", title: "Motion", about: "How the app moves. Every example is playing live.", page: MotionPage },
 		{ id: "writing", label: "Writing", ico: "pencil", title: "Writing", about: "Helpers for when you're writing.", page: WritingPage },
+		{ id: "snippets", label: "Snippets", ico: "code", title: "CSS snippets", about: "Your own styles, on top of everything else. For tinkerers.", page: SnippetsPage },
 	];
 
 	let page = $state(lastPage);

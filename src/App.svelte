@@ -17,6 +17,7 @@
 	import NoteHistory from "./lib/ui/NoteHistory.svelte";
 	import { startHistory } from "./lib/history.svelte";
 	import { startBackups } from "./lib/backups.svelte";
+	import { loadSnippets } from "./lib/snippets.svelte";
 	import AiPanel from "./lib/ui/ai/AiPanel.svelte";
 	import { aiPanel } from "./lib/ai/panel.svelte";
 	import { startUpdateChecks } from "./lib/updates.svelte";
@@ -55,8 +56,13 @@
 
 	// Backups of each cave, from the moment it opens, and each note's history.
 	$effect(() => {
-		if (ws.cave?.id) startBackups();
+		if (ws.cave?.id) {
+			startBackups();
+			void loadSnippets();
+		}
 	});
+	// Snippets edited in another program show up when you come back to Basalt.
+	const refocus = () => void loadSnippets();
 	startHistory();
 
 	// A soft fade and lift whenever another note comes to the front.
@@ -88,7 +94,7 @@
 	}
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onfocus={refocus} />
 
 <!-- The background picture, and the filter that bends light for liquid glass. -->
 <div class="backdrop" aria-hidden="true">
