@@ -1,0 +1,327 @@
+<script lang="ts">
+	// The model test: run Basalt's jobs on a model (or every model on this PC)
+	// and compare the scores. See ai/bench.svelte.ts.
+	import { AREAS, JOB_COUNT, bench, cancelTest, forgetRun, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
+	import { ai } from "../../ai/engine.svelte";
+	import { MODELS } from "../../ai/models";
+	import { usingClaude } from "../../ai/claude.svelte";
+	import { icon } from "../icons";
+
+	const label = (file: string) => MODELS.find((m) => m.file === file)?.name ?? file.replace(/\.gguf$/i, "");
+	const minutes = (n: number) => (n < 1.5 ? "about a minute" : `about ${Math.round(n)} minutes`);
+	let open = $state<string | null>(null);
+	const best = $derived(bench.runs[0]);
+	const tone = (n: number) => (n >= 80 ? "good" : n >= 55 ? "ok" : "bad");
+	const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+	const pick = (r: TestRun) => (open = open === r.model ? null : r.model);
+</script>
+
+<section class="test">
+	<h3>How good is each model at Basalt?</h3>
+	<p class="hint">Runs {JOB_COUNT} real Basalt jobs (organizing, dashboards, customizing, grammar fixes, answering from notes) in a practice cave, and scores them. Your own notes are never touched.</p>
+
+	{#if bench.running}
+		<div class="progress">
+			<div class="line">
+				<span class="spin"></span>
+				<span>{bench.models > 1 ? `Model ${bench.modelIndex} of ${bench.models}: ` : ""}{label(bench.model)} · job {bench.job} of {bench.of}</span>
+				<button class="ghost" onclick={cancelTest}>Stop</button>
+			</div>
+			<div class="bar"><i style="width: {((bench.modelIndex - 1 + bench.job / Math.max(1, bench.of)) / Math.max(1, bench.models)) * 100}%"></i></div>
+		</div>
+	{:else}
+		<div class="buttons">
+			<button class="ghost" disabled={usingClaude() || !ai.model} onclick={() => runTest()}>{@html icon("zap", 13)} Test {label(ai.model)}</button>
+			{#if ai.models.length > 1}
+				<button class="ghost" disabled={usingClaude()} onclick={() => runTest(ai.models.map((m) => m.file))}>{@html icon("layers", 13)} Test all {ai.models.length} models on this PC</button>
+			{/if}
+		</div>
+		{#if usingClaude()}<p class="hint">Turn off Claude above to test the models on this PC.</p>{/if}
+		<p class="hint small">Takes {minutes(JOB_COUNT * 0.15)} for a small model, longer for big ones. Only downloaded models are tested.</p>
+	{/if}
+	{#if bench.error}<p class="problem">{bench.error}</p>{/if}
+
+	{#if bench.runs.length}
+		<div class="runs">
+			{#each bench.runs as r (r.model)}
+				<div class="run" class:is-open={open === r.model}>
+					<button class="head" onclick={() => pick(r)}>
+						<b>{label(r.model)}</b>
+						{#if r === best && bench.runs.length > 1}<span class="badge">Best here</span>{/if}
+						<span class="score score-{tone(r.score)}">{r.score}</span>
+						<span class="meta">{r.seconds.toFixed(r.seconds < 10 ? 1 : 0)} s a job{r.wordsPerSecond ? ` · ${Math.round(r.wordsPerSecond)} words/s` : ""}</span>
+						<span class="chev" class:down={open === r.model}>{@html icon("chevron", 12)}</span>
+					</button>
+					<div class="areas">
+						{#each Object.entries(r.byArea) as [a, n] (a)}
+							<span title={AREAS[a as Area]}><em class="score-{tone(n ?? 0)}" style="width: {n}%"></em><i>{AREAS[a as Area]}</i><b>{n}</b></span>
+						{/each}
+					</div>
+					{#if open === r.model}
+						<ul class="jobs">
+							{#each r.jobs as j (j.id)}
+								<li class:is-miss={j.score < 1}>
+									<span class="mark">{@html icon(j.score >= 1 ? "check" : j.score > 0 ? "alert" : "x", 12)}</span>
+									<div>
+										<span class="ask">{j.ask}</span>
+										<span class="sec">{j.seconds.toFixed(j.seconds < 10 ? 1 : 0)} s</span>
+										{#each j.notes as n, i (i)}<small>{n}</small>{/each}
+									</div>
+								</li>
+							{/each}
+						</ul>
+						<div class="foot">
+							<span>Tested {day(r.when)}</span>
+							<button class="ghost danger" onclick={() => forgetRun(r.model)}>Forget this result</button>
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
+</section>
+
+<style>
+	.test h3 {
+		margin: 0 0 6px;
+	}
+	.hint {
+		margin: 0 0 10px;
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--muted);
+	}
+	.hint.small {
+		font-size: 11.5px;
+		margin-top: 8px;
+	}
+	.problem {
+		color: #e05d5d;
+		font-size: 12px;
+	}
+	.buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	button {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font: inherit;
+		cursor: pointer;
+	}
+	.ghost {
+		padding: 6px 11px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--text);
+		font-size: 12px;
+		font-weight: 600;
+	}
+	.ghost:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.ghost.danger {
+		color: var(--muted);
+	}
+	.ghost.danger:hover {
+		color: #e05d5d;
+	}
+	.progress .line {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12.5px;
+	}
+	.progress .line span:nth-child(2) {
+		flex: 1;
+		min-width: 0;
+	}
+	.spin {
+		width: 12px;
+		height: 12px;
+		border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.bar {
+		height: 4px;
+		margin-top: 8px;
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--muted) 25%, transparent);
+		overflow: hidden;
+	}
+	.bar i {
+		display: block;
+		height: 100%;
+		background: var(--accent);
+		transition: width var(--dur) var(--ease);
+	}
+	.runs {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-top: 14px;
+	}
+	.run {
+		border: 1px solid var(--border);
+		border-radius: calc(var(--radius) * 1.2);
+		padding: 8px 10px 10px;
+	}
+	.head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--text);
+		text-align: left;
+	}
+	.head b {
+		font-size: 13px;
+		color: var(--heading);
+	}
+	.badge {
+		padding: 1px 7px;
+		border-radius: 999px;
+		background: var(--accent);
+		color: var(--on-accent);
+		font-size: 10.5px;
+		font-weight: 650;
+	}
+	.score {
+		margin-left: auto;
+		font-size: 15px;
+		font-weight: 700;
+	}
+	.meta {
+		font-size: 11px;
+		color: var(--muted);
+	}
+	.chev {
+		display: inline-flex;
+		color: var(--muted);
+		transition: transform var(--dur) var(--ease);
+	}
+	.chev.down {
+		transform: rotate(90deg);
+	}
+	.score-good {
+		color: #5fb878;
+		background: #5fb878;
+	}
+	.score-ok {
+		color: #e5a84b;
+		background: #e5a84b;
+	}
+	.score-bad {
+		color: #e05d5d;
+		background: #e05d5d;
+	}
+	.score.score-good,
+	.score.score-ok,
+	.score.score-bad {
+		background: none;
+	}
+	.areas {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 4px 10px;
+		margin-top: 8px;
+	}
+	.areas span {
+		position: relative;
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--muted) 12%, transparent);
+		font-size: 10.5px;
+		color: var(--text);
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	.areas span {
+		display: flex;
+		gap: 6px;
+	}
+	.areas i,
+	.areas b {
+		position: relative;
+		font-style: normal;
+	}
+	.areas i {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.areas b {
+		font-weight: 650;
+	}
+	.areas em {
+		position: absolute;
+		inset: 0 auto 0 0;
+		opacity: 0.22;
+		z-index: 0;
+	}
+	.jobs {
+		list-style: none;
+		margin: 10px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.jobs li {
+		display: flex;
+		gap: 7px;
+		font-size: 12px;
+	}
+	.mark {
+		display: inline-flex;
+		margin-top: 2px;
+		color: #5fb878;
+	}
+	.is-miss .mark {
+		color: #e5a84b;
+	}
+	.jobs div {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 2px 8px;
+		min-width: 0;
+	}
+	.ask {
+		flex: 1;
+		min-width: 0;
+	}
+	.sec {
+		color: var(--muted);
+		font-size: 11px;
+	}
+	.jobs small {
+		flex-basis: 100%;
+		color: var(--muted);
+		font-size: 11px;
+		line-height: 1.4;
+	}
+	.foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-top: 10px;
+		font-size: 11px;
+		color: var(--muted);
+	}
+</style>

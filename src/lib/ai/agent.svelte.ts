@@ -301,9 +301,14 @@ function aboutNow(found: Found[]): string {
  * request is the same and the engine can reuse its work on it.
  */
 function system(memory: string, found: Found[] = []): string {
-	const now = usingClaude() ? `\n\n${aboutNow(found)}` : "";
-	const project = chat.project
-		? `\n\nThis chat is part of the project "${chat.project}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${chat.projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
+	return instructions(memory, chat.project, chat.projectMemory, usingClaude() ? aboutNow(found) : "");
+}
+
+/** The AI's instructions, for a chat or for the model test (which has no memory or project). */
+export function instructions(memory: string, projectName = "", projectMemory = "", aboutNowText = ""): string {
+	const now = aboutNowText ? `\n\n${aboutNowText}` : "";
+	const project = projectName
+		? `\n\nThis chat is part of the project "${projectName}" (a folder in the cave). Look in that folder first, put new notes for it there, and save lasting facts about the project with remember (about: "project").\nWhat you know about this project:\n${projectMemory.trim().slice(0, 1200) || "(Nothing yet.)"}`
 		: "";
 	return `You are the AI helper built into Basalt, a note-taking app. ${usingClaude() ? "You are Claude, made by Anthropic, running on Anthropic's servers: the user chose this, so what they share with you is sent there." : "You run entirely on the user's own computer: nothing they write ever leaves it."} Be warm, clear and brief; plain words, short paragraphs, Markdown when it helps.
 
@@ -387,12 +392,12 @@ let lastGroups: Group[] = [];
  * otherwise the AI sorts it in a quick, tiny request (the writing help model
  * does it, if it's awake). When in doubt, more groups rather than fewer.
  */
-async function sortRequest(text: string): Promise<Group[]> {
+export async function sortRequest(text: string, last = chat.messages.filter((m) => m.role === "assistant" && m.text.trim()).at(-2)?.text ?? "", before = lastGroups): Promise<Group[]> {
 	const byWords = groupsByWords(text);
 	const names = Object.keys(GROUPS) as Group[];
 	let byAi: Group[] = [];
 	try {
-		const last = chat.messages.filter((m) => m.role === "assistant" && m.text.trim()).at(-2)?.text.slice(0, 400) ?? "";
+		last = last.slice(0, 400);
 		let out = "";
 		await stream(
 			{
@@ -417,7 +422,7 @@ async function sortRequest(text: string): Promise<Group[]> {
 		if (!byWords.length) return ["organize", "write", "dashboards"];
 	}
 	// A short follow-up ("yes", "make it blue") carries on with what the last message needed.
-	const followUp = text.trim().split(/\s+/).length <= 8 ? lastGroups : [];
+	const followUp = text.trim().split(/\s+/).length <= 8 ? before : [];
 	return [...new Set([...byWords, ...byAi, ...followUp])];
 }
 

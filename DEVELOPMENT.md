@@ -137,6 +137,12 @@ check again before a public launch.
   keeps saved chats (`.basalt/ai/chats/`, listed in `.basalt/ai/chats.json`)
   and projects: a chat can belong to a folder, whose chats share a memory in
   `.basalt/ai/projects/`. The speed test is `speedTest` in `writer.ts`.
+  The model test (`bench.svelte.ts`, shown by `ui/ai/ModelTest.svelte`)
+  runs 18 Basalt jobs in a practice cave that exists only in memory: the
+  real instructions, tools and request sorting, with looking around
+  answered from the practice cave and planned changes scored, never made.
+  To add a job, add it to `JOBS` with a `score` that checks the plan and
+  the answer.
   Speed: the system prompt holds only what rarely changes (what changes per
   message goes with the message), chats use engine slot 0 and the sorting
   slot 1, and slot 0 is saved to the app folder's `cache` after the first

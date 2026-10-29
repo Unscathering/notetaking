@@ -10,6 +10,7 @@
 	import { speedTest, warmUp, type SpeedResult } from "../../ai/writer";
 	import { markdown } from "../../ai/markdown";
 	import { MODELS } from "../../ai/models";
+	import ModelTest from "./ModelTest.svelte";
 	import { ws } from "../../workspace.svelte";
 	import { icon } from "../icons";
 	import ModelPicker from "./ModelPicker.svelte";
@@ -233,6 +234,9 @@
 					{/if}
 					{#if speedError}<p class="problem">{speedError}</p>{/if}
 				</section>
+			{/if}
+			{#if aiPanel.view === "models" && ready}
+				<section><ModelTest /></section>
 			{/if}
 			{#if aiPanel.view === "models" && ai.folder}<p class="folder">Stored on this PC in {ai.folder}</p>{/if}
 			{#if ai.error}<p class="problem">{ai.error}</p>{/if}
