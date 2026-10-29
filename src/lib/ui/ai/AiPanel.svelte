@@ -322,6 +322,9 @@
 								{#each m.sources as s (s)}<button onclick={() => ws.open(s)} title={s}>{@html icon("file", 11)}{s.split("/").pop()?.replace(/\.md$/i, "")}</button>{/each}
 							</div>
 						{/if}
+						{#if m.unsure?.length && !m.streaming}
+							<p class="unsure">{@html icon("alert", 12)} Double-check {m.unsure.join(", ")}: {m.unsure.length === 1 ? "it isn't" : "they aren't"} in the notes this answer used.</p>
+						{/if}
 						{#if m.plan}<PlanCard {m} />{/if}
 						{#if m.error}<p class="problem">{m.error}</p>{/if}
 					{/if}
@@ -858,6 +861,14 @@
 		border-radius: 2px;
 		background: var(--accent);
 		animation: pulse 0.9s ease-in-out infinite;
+	}
+	.unsure {
+		display: flex;
+		gap: 6px;
+		margin: 6px 0 0;
+		color: #e5a84b;
+		font-size: 11.5px;
+		line-height: 1.4;
 	}
 	.composer {
 		padding: 10px 12px 8px;

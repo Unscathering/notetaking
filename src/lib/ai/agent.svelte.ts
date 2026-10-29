@@ -16,7 +16,7 @@ import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
 import { CONTEXT, ai, saveCache, stream, writerAwake } from "./engine.svelte";
 import { GROUPS, TOOLS, WRITES, apply, check, context, describe, fixLiveBlock, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
-import { echoes, recall, type Found } from "./recall";
+import { echoes, recall, unbacked, type Found } from "./recall";
 import { usingClaude } from "./claude.svelte";
 import { noteTitle } from "../cave";
 import { backUp } from "../backups.svelte";
@@ -77,6 +77,8 @@ export interface ChatMessage {
 	streaming?: boolean;
 	/** Notes the answer came from, to open with a click. */
 	sources?: string[];
+	/** Numbers or dates in the answer that its notes don't contain: worth a double-check. */
+	unsure?: string[];
 	/** Waiting on the AI (nothing coming in yet), and what it's doing, if known. */
 	thinking?: boolean;
 	stage?: string;
@@ -610,6 +612,12 @@ export async function send(text: string) {
 		const used = plan.length ? [] : found.filter((f) => echoes(reply.text, f.excerpt)).map((f) => f.path);
 		const sources = [...new Set([...read, ...linked, ...used])].filter((p) => ws.files.includes(p));
 		if (sources.length) say(reply, { sources });
+		// Small models sometimes get a number or date slightly wrong; point out any the notes don't back up.
+		if (!plan.length && (sources.length || found.length)) {
+			const texts = [...sources.map((p) => ws.texts.get(p) ?? ""), ...found.map((f) => f.excerpt)];
+			const off = unbacked(reply.text, texts);
+			if (off.length) say(reply, { unsure: off });
+		}
 	} catch (e) {
 		failed = true;
 		const message = e instanceof Error ? e.message : String(e);

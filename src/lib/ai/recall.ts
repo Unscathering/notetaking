@@ -79,3 +79,23 @@ export function echoes(answer: string, text: string): boolean {
 	for (const b of bits(answer)) if (from.has(b) && ++shared >= 2) return true;
 	return false;
 }
+
+/**
+ * Numbers and dates in an answer that none of its notes contain, so they can
+ * be flagged for a double-check ("2026-11-15" when the note says 2026-11-14).
+ * Only telling ones: two or more digits, or written like a date or time.
+ */
+export function unbacked(answer: string, sources: string[]): string[] {
+	const text = sources.join("\n");
+	const digits = new Set(text.match(/\d+/g) ?? []);
+	const out: string[] = [];
+	for (const n of new Set(answer.match(/\d+(?:[-/:.]\d+)*/g) ?? [])) {
+		const parts = n.match(/\d+/g) ?? [];
+		if (n.length < 2 && parts.length < 2) continue;
+		if (text.includes(n)) continue;
+		// "November 14, 2026" against "2026-11-14": every part has to be there.
+		if (parts.every((p) => digits.has(p) || digits.has(p.padStart(2, "0")))) continue;
+		out.push(n);
+	}
+	return out;
+}

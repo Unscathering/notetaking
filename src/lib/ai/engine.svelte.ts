@@ -252,15 +252,19 @@ async function start(slot: Slot) {
 			context: slot === "writer" ? WRITER_CONTEXT : CONTEXT,
 			slot,
 		};
+		// Without the speed-ups the chat memory is bigger (about 6%), so fewer layers may fit.
+		const plain = { ...args, speedups: false, mtp: false, gpuLayers: slot === "writer" && !writer ? 0 : gpuLayers(choice && { ...choice, needsMb: Math.round(choice.needsMb * 1.06) }, hw) };
 		const tries = [
 			{ ...args, device: hw.device && hw.vramMb ? hw.device : null },
 			// Older engines don't know how to pick a card, or the speed-ups.
-			...(speedups ? [{ ...args, device: hw.device && hw.vramMb ? hw.device : null, speedups: false, mtp: false }] : []),
-			{ ...args, device: null, speedups: false, mtp: false },
+			...(speedups ? [{ ...plain, device: hw.device && hw.vramMb ? hw.device : null }] : []),
+			{ ...plain, device: null },
 		];
+		let used = tries[0];
 		for (let i = 0; ; i++) {
 			try {
 				await invoke("ai_start", tries[i]);
+				used = tries[i];
 				if (!tries[i].speedups) plainStart.add(file.file);
 				break;
 			} catch (e) {
@@ -270,7 +274,7 @@ async function start(slot: Slot) {
 		if (slot === "writer") ai.writerRunning = true;
 		else {
 			ai.running = true;
-			ai.setup = { model: file.file, gpuLayers: args.gpuLayers, layers: choice?.layers ?? 0, cpuMoe: args.cpuMoe, vramMb: hw.vramMb, speedups: !plainStart.has(file.file) };
+			ai.setup = { model: file.file, gpuLayers: used.gpuLayers, layers: choice?.layers ?? 0, cpuMoe: used.cpuMoe, vramMb: hw.vramMb, speedups: used.speedups };
 			cacheSaved = false;
 			// Pick up where the last chat's start left off, if this model saved one.
 			if (!plainStart.has(file.file)) await invoke("ai_cache", { action: "restore", file: cacheFile(file.file) }).catch(() => {});

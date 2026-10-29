@@ -276,7 +276,7 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 		if (!snippetName(a.name)) return "Give the snippet a short name, like 'purple-headings'.";
 		if (!css || !css.includes("{")) return "Give the CSS, with selectors and { } blocks.";
 		if (css.split("{").length !== css.split("}").length) return "The CSS's { and } don't match up. Check it and try again.";
-		return /@import|url\(\s*['"]?(https?:|\/\/)/i.test(css) ? "Snippets can't load files from the internet." : "";
+		return /@import|url\(\s*['"]?(https?:|\/\/)/i.test(css) ? "Snippets can't load files from the internet." : selectorProblem(css);
 	}
 	if (tool === "create_project") {
 		const name = folderPath(a.name);
@@ -713,6 +713,28 @@ export function tagProblem(tag: string, used: boolean, folders: string[]): strin
 	const folder = folders.find((f) => stem(f.split("/").pop()!) === stem(tag));
 	return `No note has the tag #${tag}, so the list would be empty.${folder ? ` To list the notes in the ${folder} folder, use from: ${folder} instead of tag.` : ""}`;
 }
+
+/**
+ * Selectors in a snippet that can't match anything in Basalt (small models make
+ * up things like note[data-type='dashboard']). Shared with the model test.
+ */
+export function strangeSelectors(css: string): string[] {
+	const known = /\.(cm-|basalt-|note-|(dashboard|sidebar|ribbon|tabbar|status|ai|plan)(?![\w-]))|^(html|body|:root|\*)|(^|[\s>+~])(h[1-6]|p|a|img|table|thead|tbody|tr|th|td|li|ul|ol|code|pre|blockquote|hr|strong|em|b|i|input|button|span|div|mark|kbd)\b/;
+	const selectors = css
+		.replace(/\/\*[\s\S]*?\*\//g, "")
+		.replace(/@[a-z-]+[^{]*\{/gi, "")
+		.split("}")
+		.map((block) => block.split("{")[0])
+		.flatMap((head) => head.split(","))
+		.map((x) => x.trim())
+		.filter((x) => x && !/^(from|to|\d+%)$/.test(x));
+	return selectors.filter((x) => !known.test(x));
+}
+const SNIPPET_HINT = `Basalt's own names: a note with "cssclass: dashboard" is .note-dashboard, live-list cards are .basalt-card, headings are .cm-h1 to .cm-h6, the note's text is .cm-content. basalt_help has the full list.`;
+export const selectorProblem = (css: string) => {
+	const odd = strangeSelectors(css);
+	return odd.length ? `Nothing in Basalt matches ${odd.map((x) => `"${x}"`).join(", ")}. ${SNIPPET_HINT}` : "";
+};
 
 /** A snippet's file name, without .css: lowercase words and dashes. */
 const snippetName = (v: unknown) => str(v).replace(/\.css$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);

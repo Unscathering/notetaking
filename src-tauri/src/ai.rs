@@ -590,6 +590,9 @@ pub async fn ai_start(
         // many words at a time; models with their own guessing heads (MTP) use those too.
         let spec = if mtp.unwrap_or(false) { "draft-mtp,ngram-mod" } else { "ngram-mod" };
         extra.extend(["--spec-type".into(), spec.into()]);
+        // The rest of the chat memory at half size too (needs flash attention): about
+        // 0.7 GB less for a 14B model, so it can fit on a 12 GB card whole.
+        extra.extend(["-fa".into(), "auto".into(), "-ctv".into(), "q8_0".into()]);
     }
     let child = quiet(
         Command::new(&exe)

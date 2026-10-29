@@ -7,7 +7,7 @@
 // that only exists here: looking around reads from it, and planned changes
 // are only scored, never carried out. The real instructions, tools and
 // request sorting are used, so the score reflects real use.
-import { TOOLS, WRITES, fixLiveBlock, groupOf, look, tagProblem, toolsFor, type Group } from "./tools";
+import { TOOLS, WRITES, fixLiveBlock, groupOf, look, selectorProblem, tagProblem, toolsFor, type Group } from "./tools";
 import { foundNotes, instructions, sortRequest } from "./agent.svelte";
 import { ai, loadedModel, stop, stopAnswer, stream, useModel, wake } from "./engine.svelte";
 import { echoes, recall } from "./recall";
@@ -84,6 +84,8 @@ function practiceCheck(tool: string, a: Record<string, unknown>): string {
 		case "append_to_note":
 		case "set_home":
 			return findNote(a.path) ? "" : needs(a.path);
+		case "create_snippet":
+			return selectorProblem(String(a.css ?? ""));
 		case "add_live_block": {
 			if (!findNote(a.path)) return needs(a.path);
 			const tag = String(a.tag ?? "").replace(/^#/, "").toLowerCase();
@@ -751,7 +753,8 @@ export const bench = $state({
 export const AREA_COUNT = Object.keys(AREAS).length;
 
 function keep(run: TestRun) {
-	bench.runs = [run, ...bench.runs.filter((r) => r.model !== run.model)].sort((a, b) => b.score - a.score);
+	// Best first; on a tie, the faster one.
+	bench.runs = [run, ...bench.runs.filter((r) => r.model !== run.model)].sort((a, b) => b.score - a.score || a.seconds - b.seconds);
 	try {
 		localStorage.setItem(KEY, JSON.stringify(bench.runs));
 	} catch {

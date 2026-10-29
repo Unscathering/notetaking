@@ -31,13 +31,13 @@ const hf = (repo: string, file: string) => `https://huggingface.co/${repo}/resol
 /** A model in a Hugging Face repository, as a 4-bit (Q4_K_M) file. */
 const q4 = (repo: string, file: string) => ({ file, url: hf(repo, file), repo, quant: "Q4_K_M" });
 
-// Sizes allow for the chat memory (16K tokens) and the engine's own needs.
+// Sizes allow for the chat memory (16K tokens, stored at half size) and the engine's own needs.
 export const MODELS: ModelChoice[] = [
-	{ id: "tiny", name: "Tiny", about: "Qwen3, 1.7B. Instant spelling and grammar fixes on any computer, but simple.", ...q4("unsloth/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q4_K_M.gguf"), sizeGb: 1.1, needsMb: 2900, layers: 28, speed: 5, smarts: 1 },
-	{ id: "fast", name: "Fast", about: "Qwen3 Instruct, 4B. The best for quick text fixes, and fine for simple folder jobs.", ...q4("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), sizeGb: 2.5, needsMb: 4800, layers: 36, speed: 5, smarts: 2 },
-	{ id: "balanced", name: "Balanced", about: "Qwen3, 8B. A good everyday helper for notes, folders and dashboards.", ...q4("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"), sizeGb: 5.0, needsMb: 7300, layers: 36, speed: 4, smarts: 3 },
-	{ id: "sharp", name: "Sharp", about: "Qwen3.5, 9B. Newer and a step up from Balanced, at nearly the same speed.", ...q4("unsloth/Qwen3.5-9B-MTP-GGUF", "Qwen3.5-9B-MTP-Q4_K_M.gguf"), sizeGb: 5.7, needsMb: 8200, layers: 32, speed: 4, smarts: 4 },
-	{ id: "smart", name: "Smart", about: "Qwen3, 14B. Careful with big jobs like setting up a whole cave. Needs a strong graphics card.", ...q4("unsloth/Qwen3-14B-GGUF", "Qwen3-14B-Q4_K_M.gguf"), sizeGb: 9.0, needsMb: 11500, layers: 40, speed: 3, smarts: 4 },
+	{ id: "tiny", name: "Tiny", about: "Qwen3, 1.7B. Instant spelling and grammar fixes on any computer, but simple.", ...q4("unsloth/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q4_K_M.gguf"), sizeGb: 1.1, needsMb: 2450, layers: 28, speed: 5, smarts: 1 },
+	{ id: "fast", name: "Fast", about: "Qwen3 Instruct, 4B. The best for quick text fixes, and fine for simple folder jobs.", ...q4("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), sizeGb: 2.5, needsMb: 4200, layers: 36, speed: 5, smarts: 2 },
+	{ id: "balanced", name: "Balanced", about: "Qwen3, 8B. A good everyday helper for notes, folders and dashboards.", ...q4("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"), sizeGb: 5.0, needsMb: 6700, layers: 36, speed: 4, smarts: 3 },
+	{ id: "sharp", name: "Sharp", about: "Qwen3.5, 9B. Newer and a step up from Balanced, at nearly the same speed.", ...q4("unsloth/Qwen3.5-9B-MTP-GGUF", "Qwen3.5-9B-MTP-Q4_K_M.gguf"), sizeGb: 5.7, needsMb: 7700, layers: 32, speed: 4, smarts: 4 },
+	{ id: "smart", name: "Smart", about: "Qwen3, 14B. Careful with big jobs like setting up a whole cave. Needs a strong graphics card.", ...q4("unsloth/Qwen3-14B-GGUF", "Qwen3-14B-Q4_K_M.gguf"), sizeGb: 9.0, needsMb: 10850, layers: 40, speed: 3, smarts: 4 },
 	{ id: "thinker", name: "Deep thinker", about: "OpenAI's gpt-oss, 20B. Thinks before it answers, so it plans big jobs well. Needs 12 GB of graphics memory or 16 GB of memory to share.", ...q4("ggml-org/gpt-oss-20b-GGUF", "gpt-oss-20b-mxfp4.gguf"), quant: "mxfp4", sizeGb: 12.1, needsMb: 13400, layers: 24, expertMb: 440, speed: 2, smarts: 5 },
 	{ id: "brilliant", name: "Brilliant", about: "Qwen3 Instruct, 30B. The cleverest here, and still quick: parts of it wait in normal memory. Needs 32 GB of memory.", ...q4("unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF", "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"), sizeGb: 18.6, needsMb: 20500, layers: 48, expertMb: 356, speed: 3, smarts: 5 },
 ];

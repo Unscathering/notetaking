@@ -4,10 +4,13 @@
 	import { MODELS, fit } from "../../ai/models";
 	import { ai, deleteModel, downloadModel, recommendedModel, useModel, useWriterModel } from "../../ai/engine.svelte";
 	import { icon } from "../icons";
+	import { bench } from "../../ai/bench.svelte";
 
 	const hw = $derived(ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
-	const best = $derived(recommendedModel());
 	const installed = (file: string) => ai.models.some((m) => m.file === file);
+	// Once models have been through the model test on this PC, the best of them is the pick.
+	const tested = $derived(bench.runs.find((r) => installed(r.model) && MODELS.some((m) => m.file === r.model)));
+	const best = $derived(MODELS.find((m) => m.file === tested?.model) ?? recommendedModel());
 	const gb = (mb: number) => `${Math.round(mb / 1024)} GB`;
 	/** Model files on this PC that aren't one of the cards (older ones, or ones you added). */
 	const others = $derived(ai.models.filter((f) => !MODELS.some((m) => m.file === f.file)));
@@ -27,7 +30,7 @@
 		<div class="model" class:is-best={m.id === best.id} class:is-on={ai.model === m.file}>
 			<div class="top">
 				<b>{m.name}</b>
-				{#if m.id === best.id}<span class="badge">{@html icon("sparkles", 11)} Recommended for your PC</span>{/if}
+				{#if m.id === best.id}<span class="badge">{@html icon("sparkles", 11)} {tested ? `Best in your test (${tested.score})` : "Recommended for your PC"}</span>{/if}
 				<span class="size">{m.sizeGb} GB</span>
 			</div>
 			<p>{m.about}</p>
