@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { HighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { EditorState, Transaction, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView, drawSelection, dropCursor, keymap, placeholder } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { livePreview, wikilinkClicks } from "./livePreview";
@@ -145,8 +145,13 @@ export interface EditorHooks extends SuggestHooks, BlockHooks, BehaviorHooks, Wr
 	onCursor?(line: number): void;
 }
 
-export function editorExtensions(hooks: EditorHooks): Extension[] {
+/** View mode: the note can't be edited, and shows tidy with nothing empty to fill in. */
+export const viewMode = new Compartment();
+export const viewing = (on: boolean) => (on ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []);
+
+export function editorExtensions(hooks: EditorHooks, reading = false): Extension[] {
 	return [
+		viewMode.of(viewing(reading)),
 		history(),
 		drawSelection(),
 		dropCursor(),

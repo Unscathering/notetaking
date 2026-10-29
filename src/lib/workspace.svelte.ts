@@ -64,6 +64,25 @@ class Workspace {
 	}
 	texts = new SvelteMap<string, string>();
 	openFolders = new SvelteSet<string>();
+	/** Notes shown in view mode (read only, tidy), remembered between visits. */
+	viewing = new SvelteSet<string>((() => {
+		try {
+			return JSON.parse(localStorage.getItem("basalt.viewing") ?? "[]") as string[];
+		} catch {
+			return [];
+		}
+	})());
+
+	/** Switches a note between view mode and editing. */
+	toggleView(path: string) {
+		if (this.viewing.has(path)) this.viewing.delete(path);
+		else this.viewing.add(path);
+		try {
+			localStorage.setItem("basalt.viewing", JSON.stringify([...this.viewing].slice(-500)));
+		} catch {
+			// Fine; it's remembered until Basalt closes.
+		}
+	}
 	panel: Panel = $state("files");
 	sidebarOpen = $state(true);
 	modal: Modal | null = $state(null);

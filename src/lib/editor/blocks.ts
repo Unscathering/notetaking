@@ -49,12 +49,12 @@ let focusAfter: { from: number; r: number; c: number } | null = null;
 let redrawing = false;
 
 class TableWidget extends WidgetType {
-	constructor(private source: string, private from: number, private to: number) {
+	constructor(private source: string, private from: number, private to: number, private reading = false) {
 		super();
 	}
 
 	eq(other: TableWidget) {
-		return other.source === this.source && other.from === this.from;
+		return other.source === this.source && other.from === this.from && other.reading === this.reading;
 	}
 
 	toDOM(view: EditorView) {
@@ -88,7 +88,7 @@ class TableWidget extends WidgetType {
 			cells.push([]);
 			row.forEach((text, c) => {
 				const cell = document.createElement(r === 0 ? "th" : "td");
-				cell.contentEditable = "plaintext-only";
+				cell.contentEditable = this.reading ? "false" : "plaintext-only";
 				cell.textContent = text.replace(/\\\|/g, "|");
 				if (table.align[c]) cell.style.textAlign = table.align[c]!;
 				cell.addEventListener("keydown", (e) => {
@@ -234,12 +234,13 @@ class ImageWidget extends WidgetType {
 function build(state: EditorState, hooks: BlockHooks): DecorationSet {
 	const decos: Range<Decoration>[] = [];
 	const sel = state.selection.main;
-	const touches = (from: number, to: number) => sel.from <= to && sel.to >= from;
+	// In view mode the cursor never opens a block up as text.
+	const touches = (from: number, to: number) => !state.readOnly && sel.from <= to && sel.to >= from;
 	syntaxTree(state).iterate({
 		enter: (node) => {
 			if (node.name === "Table") {
 				const from = state.doc.lineAt(node.from).from, to = state.doc.lineAt(node.to).to;
-				if (!touches(from, to)) decos.push(Decoration.replace({ widget: new TableWidget(state.sliceDoc(from, to), from, to), block: true }).range(from, to));
+				if (!touches(from, to)) decos.push(Decoration.replace({ widget: new TableWidget(state.sliceDoc(from, to), from, to, state.readOnly), block: true }).range(from, to));
 				return false;
 			}
 			if (node.name === "Image") {
@@ -259,6 +260,6 @@ function build(state: EditorState, hooks: BlockHooks): DecorationSet {
 export const richBlocks = (hooks: BlockHooks) =>
 	StateField.define<DecorationSet>({
 		create: (state) => build(state, hooks),
-		update: (value, tr) => (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? build(tr.state, hooks) : value),
+		update: (value, tr) => (tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? build(tr.state, hooks) : value),
 		provide: (f) => EditorView.decorations.from(f),
 	});

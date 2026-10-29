@@ -58,6 +58,7 @@ only those notes.
 | `.basalt-embed`, `.basalt-embed-head`, `.basalt-embed-body` | An embedded note |
 | `.sidebar`, `.ribbon`, `.tabbar`, `.status` | The parts of the window |
 | `html[data-material="glass"]`, `html[data-light="yes"]` | The current material, light or dark theme |
+| `.is-reading` | Around a note in view mode (Ctrl+E): style reading differently from editing |
 
 ## Live blocks
 

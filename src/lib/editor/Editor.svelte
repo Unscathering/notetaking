@@ -5,7 +5,7 @@
 	import { EditorView } from "@codemirror/view";
 	import { onMount } from "svelte";
 	import { EditorSelection } from "@codemirror/state";
-	import { editorExtensions } from "./setup";
+	import { editorExtensions, viewMode, viewing } from "./setup";
 	import { frontmatterRange } from "../notes";
 	import { ws } from "../workspace.svelte";
 	import { writing } from "../writing.svelte";
@@ -46,7 +46,7 @@
 				...helpHooks,
 				live: liveHooksFor(p),
 				onCursor: (line) => (ws.cursorLine = line),
-			}),
+			}, ws.viewing.has(p)),
 		});
 	}
 
@@ -132,6 +132,14 @@
 		host.classList.add(...classes);
 		noteClasses = classes;
 		host.dataset.cssclass = classes.join(" ");
+	});
+
+	// View mode: read only and tidy (see setup.ts), and a class for the styles that hide empty bits.
+	$effect(() => {
+		const on = ws.viewing.has(path);
+		if (!mounted || !view || shown !== path) return;
+		if (view.state.readOnly !== on) view.dispatch({ effects: viewMode.reconfigure(viewing(on)) });
+		host.classList.toggle("is-reading", on);
 	});
 
 	// Spell check follows the writing setting.

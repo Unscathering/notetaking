@@ -44,7 +44,7 @@
 	import { theme, trackTheme } from "./lib/theme/store.svelte";
 	import { motionMs } from "./lib/theme/theme";
 	import { noteTitle, pickCave } from "./lib/cave";
-	import { startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
+	import { isView, startWorkspace, viewInfo, ws } from "./lib/workspace.svelte";
 	import { trackWriting, writing } from "./lib/writing.svelte";
 	import { mediaUrl } from "./lib/theme/media.svelte";
 
@@ -58,6 +58,37 @@
 	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));
 	/** Where the split sits, as a share of the width (remembered). */
 	let splitAt = $state(Number(localStorage.getItem("basalt.split-at")) || 50);
+	// Dragging the edges between the sidebar, the note and the AI panel. Double-click puts one back.
+	const AI_WIDTH = 380;
+	let aiWidth = $state(Number(localStorage.getItem("basalt.ai-width")) || AI_WIDTH);
+	let resizing = $state(false);
+	function dragEdge(e: PointerEvent, which: "sidebar" | "ai") {
+		e.preventDefault();
+		const x0 = e.clientX;
+		const w0 = which === "sidebar" ? theme.shape.sidebarWidth : aiWidth;
+		resizing = true;
+		const move = (ev: PointerEvent) => {
+			const dx = ev.clientX - x0;
+			if (which === "sidebar") theme.shape.sidebarWidth = Math.round(Math.min(600, Math.max(160, w0 + dx)));
+			else aiWidth = Math.round(Math.min(Math.max(300, window.innerWidth * 0.6), Math.max(300, w0 - dx)));
+		};
+		const up = () => {
+			resizing = false;
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
+			if (which === "ai") localStorage.setItem("basalt.ai-width", String(aiWidth));
+		};
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+	}
+	function resetEdge(which: "sidebar" | "ai") {
+		if (which === "sidebar") theme.shape.sidebarWidth = 260;
+		else {
+			aiWidth = AI_WIDTH;
+			localStorage.removeItem("basalt.ai-width");
+		}
+	}
+
 	function startResize(e: PointerEvent) {
 		const box = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
 		const move = (ev: PointerEvent) => (splitAt = Math.min(80, Math.max(20, ((ev.clientX - box.left) / box.width) * 100)));
@@ -146,13 +177,16 @@
 	</filter>
 </svg>
 
-<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus} class:ai-open={aiPanel.open}>
+<div class="app" class:sidebar-closed={!ws.sidebarOpen} class:is-focus={writing.focus} class:ai-open={aiPanel.open} class:is-resizing={resizing} style:--ai-width={`${aiWidth}px`}>
 	<Ribbon />
 	<aside class="sidebar">
 		<Sidebar {ms} />
 	</aside>
 
 	<main class="main">
+		{#if ws.sidebarOpen && !writing.focus}
+			<div class="edge edge-sidebar" role="separator" aria-orientation="vertical" aria-label="Sidebar width" title="Drag to resize · double-click to reset" onpointerdown={(e) => dragEdge(e, "sidebar")} ondblclick={() => resetEdge("sidebar")}></div>
+		{/if}
 		<div class="tabbar">
 			<div class="tabs" role="tablist">
 				{#each ws.tabs as path (path)}
@@ -206,11 +240,17 @@
 		<footer class="status">
 			<FocusTimer {ms} />
 			<MicButton {ms} onText={dictate} />
+			{#if ws.note && !isView(ws.note)}
+				<button class="mode" class:on={ws.viewing.has(ws.note)} onclick={() => ws.note && ws.toggleView(ws.note)} title="Switch between viewing and editing (Ctrl+E)">{@html icon(ws.viewing.has(ws.note) ? "eye" : "pencil", 12)} {ws.viewing.has(ws.note) ? "Viewing" : "Editing"}</button>
+			{/if}
 			<span>{words} {words === 1 ? "word" : "words"}</span>
 			<span class="saved" class:is-saving={ws.saving}>{ws.saving ? "Saving…" : "Saved"}</span>
 		</footer>
 	</main>
 	<div class="ai-col">
+		{#if aiPanel.open && !writing.focus}
+			<div class="edge edge-ai" role="separator" aria-orientation="vertical" aria-label="AI panel width" title="Drag to resize · double-click to reset" onpointerdown={(e) => dragEdge(e, "ai")} ondblclick={() => resetEdge("ai")}></div>
+		{/if}
 		{#if aiPanel.open}<AiPanel {ms} />{/if}
 	</div>
 </div>
@@ -294,12 +334,50 @@
 		grid-template-columns: 48px 0px minmax(0, 1fr) 0px;
 	}
 	.app.ai-open {
-		grid-template-columns: 48px var(--sidebar-width) minmax(0, 1fr) 380px;
+		grid-template-columns: 48px var(--sidebar-width) minmax(0, 1fr) var(--ai-width);
 	}
 	.app.ai-open.sidebar-closed {
-		grid-template-columns: 48px 0px minmax(0, 1fr) 380px;
+		grid-template-columns: 48px 0px minmax(0, 1fr) var(--ai-width);
+	}
+	/* While an edge is dragged, follow the pointer straight away. */
+	.app.is-resizing {
+		transition: none;
+		cursor: col-resize;
+		user-select: none;
+	}
+	.edge {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		z-index: 20;
+		width: 8px;
+		cursor: col-resize;
+		touch-action: none;
+	}
+	.edge::after {
+		content: "";
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 3px;
+		width: 2px;
+		border-radius: 2px;
+		background: var(--accent);
+		opacity: 0;
+		transition: opacity var(--dur) var(--ease);
+	}
+	.edge:hover::after,
+	.is-resizing .edge::after {
+		opacity: 0.8;
+	}
+	.edge-sidebar {
+		left: 0;
+	}
+	.edge-ai {
+		left: 0;
 	}
 	.ai-col {
+		position: relative;
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
@@ -517,6 +595,22 @@
 	.divider:hover {
 		background-image: linear-gradient(var(--accent), var(--accent));
 		background-size: 3px 100%;
+	}
+	.mode {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 0 6px;
+		border: 0;
+		border-radius: var(--radius);
+		background: none;
+		color: var(--muted);
+		font: inherit;
+		cursor: pointer;
+	}
+	.mode:hover,
+	.mode.on {
+		color: var(--accent);
 	}
 	.status {
 		display: flex;

@@ -66,6 +66,7 @@ export const COMMANDS: Command[] = [
 	{ id: "outline", label: "Outline of this note", icon: "list", run: () => showPanel("outline") },
 	{ id: "tags", label: "Browse tags", icon: "tag", keys: "Ctrl+Shift+T", run: () => showPanel("tags") },
 	{ id: "switcher", label: "Open a note", icon: "file", keys: "Ctrl+O", run: () => (ws.modal = "switcher") },
+	{ id: "view-mode", label: "Switch between viewing and editing", icon: "eye", keys: "Ctrl+E", run: () => ws.note && ws.toggleView(ws.note) },
 	{ id: "ai", label: "Ask the AI", icon: "sparkles", keys: "Ctrl+J", run: () => (aiPanel.open = !aiPanel.open) },
 	{ id: "grammar", label: "Check grammar (selection or whole note)", icon: "check", keys: "Ctrl+Shift+G", run: help("grammar") },
 	{ id: "fix-writing", label: "Fix my writing (selection or whole note)", icon: "sparkles", run: help("fix") },

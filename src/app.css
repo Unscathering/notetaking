@@ -87,3 +87,22 @@ select:focus-visible {
 :root[data-material="clear"][data-light="yes"] .app {
 	text-shadow: 0 1px 3px rgba(255, 255, 255, 0.6);
 }
+
+/* View mode (Ctrl+E): the note reads tidy, with nothing empty to fill in and no editing handles. */
+.is-reading .cm-tag-add,
+.is-reading .cm-add-banner,
+.is-reading .cm-banner-tools,
+.is-reading .cm-tag-x,
+.is-reading .cm-block-handle,
+.is-reading .cm-drop-line,
+.is-reading .cm-table-bar,
+.is-reading .cm-placeholder {
+	display: none !important;
+}
+.is-reading .cm-props.is-empty,
+.is-reading .cm-props-desc:placeholder-shown {
+	display: none;
+}
+.is-reading .cm-props-desc {
+	pointer-events: none;
+}

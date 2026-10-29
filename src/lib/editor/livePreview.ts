@@ -78,6 +78,8 @@ class CheckboxWidget extends WidgetType {
 /** Lines the cursor or a selection touches: their symbols stay visible. */
 function activeLines(state: EditorState): Set<number> {
 	const lines = new Set<number>();
+	// View mode: nothing is being edited, so every line shows tidy.
+	if (state.readOnly) return lines;
 	for (const r of state.selection.ranges) {
 		const a = state.doc.lineAt(r.from).number, b = state.doc.lineAt(r.to).number;
 		for (let n = a; n <= b; n++) lines.add(n);
@@ -213,7 +215,7 @@ export const livePreview = ViewPlugin.fromClass(
 			this.decorations = build(view);
 		}
 		update(u: ViewUpdate) {
-			if (u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
+			if (u.docChanged || u.selectionSet || u.viewportChanged || u.startState.readOnly !== u.state.readOnly || syntaxTree(u.startState) !== syntaxTree(u.state)) this.decorations = build(u.view);
 		}
 	},
 	{ decorations: (v) => v.decorations }

@@ -29,17 +29,19 @@ function updateProps(view: EditorView, change: (current: NoteProps, ownTags: str
 }
 
 class PropsWidget extends WidgetType {
-	constructor(private props: NoteProps, private bodyTags: string[], private hooks: HeaderHooks) {
+	constructor(private props: NoteProps, private bodyTags: string[], private hooks: HeaderHooks, private reading = false) {
 		super();
 	}
 
 	eq(other: PropsWidget) {
-		return JSON.stringify(other.props) === JSON.stringify(this.props) && other.bodyTags.join() === this.bodyTags.join();
+		return JSON.stringify(other.props) === JSON.stringify(this.props) && other.bodyTags.join() === this.bodyTags.join() && other.reading === this.reading;
 	}
 
 	toDOM(view: EditorView) {
 		const root = document.createElement("div");
 		root.className = "cm-props";
+		// Nothing to show in view mode: no banner, description or tags.
+		if (!this.props.banner && !this.props.description && !this.props.tags.length) root.classList.add("is-empty");
 		const pickBanner = async () => {
 			const path = await this.hooks.pickImage();
 			if (path) updateProps(view, (p, own) => ({ ...p, tags: own, banner: path }));
@@ -76,6 +78,7 @@ class PropsWidget extends WidgetType {
 		desc.className = "cm-props-desc";
 		desc.placeholder = "Add a description…";
 		desc.value = this.props.description ?? "";
+		desc.readOnly = view.state.readOnly;
 		const saveDesc = () => {
 			const value = desc.value.trim();
 			if (value === (this.props.description ?? "")) return;
@@ -147,11 +150,11 @@ function decorate(state: EditorState, hooks: HeaderHooks): DecorationSet {
 	const fm = frontmatterRange(text);
 	const props = readProps(text);
 	const bodyTags = readProps(fm ? text.slice(fm.to) : text).tags;
-	const widget = new PropsWidget(props, bodyTags, hooks);
+	const widget = new PropsWidget(props, bodyTags, hooks, state.readOnly);
 	if (!fm) return Decoration.set([Decoration.widget({ widget, block: true, side: -1 }).range(0)]);
 	// Show the raw block while the cursor is inside it.
 	const sel = state.selection.main;
-	if (sel.from < fm.to - 1) return Decoration.none;
+	if (!state.readOnly && sel.from < fm.to - 1) return Decoration.none;
 	return Decoration.set([Decoration.replace({ widget, block: true }).range(0, fm.to - 1)]);
 }
 
@@ -159,7 +162,7 @@ export const noteHeader = (hooks: HeaderHooks) =>
 	StateField.define<DecorationSet>({
 		create: (state) => decorate(state, hooks),
 		update(value: DecorationSet, tr: Transaction) {
-			return tr.docChanged || tr.selection ? decorate(tr.state, hooks) : value;
+			return tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly ? decorate(tr.state, hooks) : value;
 		},
 		provide: (f) => EditorView.decorations.from(f),
 	});

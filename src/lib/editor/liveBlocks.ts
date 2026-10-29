@@ -236,7 +236,8 @@ class EmbedWidget extends WidgetType {
 function build(state: EditorState, hooks: LiveHooks, stamp: number): DecorationSet {
 	const decos: Range<Decoration>[] = [];
 	const sel = state.selection.main;
-	const touches = (from: number, to: number) => sel.from <= to && sel.to >= from;
+	// In view mode the cursor never opens a block up as text.
+	const touches = (from: number, to: number) => !state.readOnly && sel.from <= to && sel.to >= from;
 	const doc = state.doc;
 	for (let n = 1; n <= doc.lines; n++) {
 		const line = doc.line(n);
@@ -265,7 +266,7 @@ export const liveBlocks = (hooks: LiveHooks) => {
 	});
 	const decos = StateField.define<DecorationSet>({
 		create: (state) => build(state, hooks, 0),
-		update: (value, tr) => (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(refreshLive)) ? build(tr.state, hooks, tr.state.field(stamp)) : value),
+		update: (value, tr) => (tr.docChanged || tr.selection || tr.startState.readOnly !== tr.state.readOnly || tr.effects.some((e) => e.is(refreshLive)) ? build(tr.state, hooks, tr.state.field(stamp)) : value),
 		provide: (f) => EditorView.decorations.from(f),
 	});
 	return [stamp, decos, look];
