@@ -39,6 +39,7 @@
 	trackWriting();
 	startWorkspace();
 	startUpdateChecks();
+	void import("./lib/links").then((l) => l.startLinks());
 	const ms = $derived(motionMs(theme));
 	const isBoard = (path: string) => isBoardText(ws.texts.get(path) ?? "");
 	const showingBoard = $derived(!!ws.active && isBoard(ws.active) && !ws.rawBoards.has(ws.active));

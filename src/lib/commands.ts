@@ -84,6 +84,7 @@ export const COMMANDS: Command[] = [
 	{ id: "typewriter", label: "Typewriter scrolling", icon: "type", run: () => (writing.typewriter = !writing.typewriter) },
 	{ id: "dim", label: "Dim other paragraphs", icon: "eye", run: () => (writing.dimOthers = !writing.dimOthers) },
 	{ id: "split", label: "Open this note on the right too", icon: "layout", run: () => (ws.split ? (ws.split = null) : ws.openSplit(ws.note ?? ws.recent)) },
+	{ id: "copy-link", label: "Copy link to this note (basalt://)", icon: "pin", run: () => withNote((p) => import("./links").then((l) => l.copyNoteLink(p))) },
 	{ id: "clip", label: "Clip a web page", icon: "globe", keys: "Ctrl+Shift+K", run: () => (ws.modal = "clip") },
 	{ id: "pdf", label: "Print or save as PDF", icon: "file", keys: "Ctrl+Shift+P", run: () => withNote((p) => exportNote("pdf", p)) },
 	{ id: "web-page", label: "Save this note as a web page", icon: "globe", run: () => withNote((p) => exportNote("page", p)) },
