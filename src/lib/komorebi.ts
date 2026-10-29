@@ -127,6 +127,11 @@ export const KOMOREBI_CSS = `/* Komorebi: frosted glass dashboard tiles.
 }
 .note-komorebi .basalt-title::before { content: "//"; color: var(--k-muted); opacity: 0.7; }
 
+/* Groups inside a list (group: folder), and the box for adding a note. */
+.note-komorebi .basalt-group { font-family: var(--k-font); color: var(--k-muted); font-size: 0.6rem; letter-spacing: 0.18em; }
+.note-komorebi .basalt-pick { font-family: var(--k-font); border-color: var(--k-border); color: var(--k-text); }
+.note-komorebi .basalt-tools { border-color: var(--k-border); background: rgba(var(--k-deep), 0.85); }
+
 /* Plain Markdown headings get the same look: # like the header, ## and ### like the labels. */
 .note-komorebi .basalt-inline-title { display: none; }
 .note-komorebi .cm-line.cm-h1 { font-family: var(--k-font); color: var(--k-accent); font-size: 1.55rem; letter-spacing: 0.08em; }

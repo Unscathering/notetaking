@@ -47,6 +47,8 @@ export function liveHooksFor(where: string | (() => string)): LiveHooks {
 			await ws.writeNote(path, lines.join("\n"));
 		},
 		folderColor: (folder) => ws.meta.looks[folder]?.color,
+		noteNames: () => ws.notes.filter((p) => p !== at()).map((p) => p.split("/").pop()!.replace(/\.md$/i, "")),
+		folder: () => at().split("/").slice(0, -1).join("/"),
 		habits: (days) => ({ list: habitList(ws.texts), days: habitDays(ws.texts, days) }),
 		openDay: (date) => void openDay(new Date(`${date}T12:00:00`)),
 		openTarget(name) {

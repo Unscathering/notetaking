@@ -2,7 +2,8 @@
 // tasks, tags or backlinks, as a list, cards, a table or a count. They're how
 // dashboards are made. A block is plain `key: value` lines:
 //
-//   list: notes | tasks | tags | backlinks | habits  (what to list; notes if left out)
+//   list: notes | picked | tasks | tags | backlinks | habits  (what to list; notes if left out;
+//                                              picked: only the notes in `note:` lines)
 //   days: 28                                   (habits: how many days back)
 //   from: Projects, Writing                    (only inside these folders)
 //   tag: idea                                  (only with this tag)
@@ -16,6 +17,11 @@
 //   show: list | cards | table | count
 //   columns: status, due                       (table columns)
 //   title: My projects                         (a heading above it)
+//   note: Garden plan                          (a hand-picked note, one per line, in order; with
+//                                               no other filter the list is just these)
+//   pin: Garden plan                           (shown first, in the order pinned)
+//   hide: Old ideas                            (left out)
+//   group: folder | tag                        (split the list under small headings)
 //
 // Widgets, for dashboards (list: …): header (title, text as a tagline, a clock,
 // a greeting and counts; image behind it), tiles (one `tile: Name | picture |
@@ -39,7 +45,7 @@ export interface Tile {
 }
 
 export interface Spec {
-	list: "notes" | "tasks" | "tags" | "backlinks" | "habits" | Widget;
+	list: "notes" | "picked" | "tasks" | "tags" | "backlinks" | "habits" | Widget;
 	show: "list" | "cards" | "table" | "count";
 	from: string[];
 	tag: string;
@@ -62,12 +68,19 @@ export interface Spec {
 	tiles: Tile[];
 	/** Actions: the commands' ids. */
 	actions: string[];
+	/** Hand-picked notes, in order. */
+	notes: string[];
+	/** Shown first, in this order (names, lowercase). */
+	pin: string[];
+	/** Left out (names, lowercase). */
+	hide: string[];
+	group: "" | "folder" | "tag";
 	/** Lines it didn't understand, to point out. */
 	unknown: string[];
 }
 
 export function parseSpec(source: string): Spec {
-	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, days: 28, columns: [], title: "", text: "", image: "", tiles: [], actions: [], unknown: [] };
+	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, days: 28, columns: [], title: "", text: "", image: "", tiles: [], actions: [], notes: [], pin: [], hide: [], group: "", unknown: [] };
 	for (const raw of source.split("\n")) {
 		const line = raw.replace(/\s+#.*$/, "").trim();
 		if (!line) continue;
@@ -80,7 +93,7 @@ export function parseSpec(source: string): Spec {
 		const v = value.trim();
 		switch (key.toLowerCase()) {
 			case "list":
-				if (["notes", "tasks", "tags", "backlinks", "habits", ...WIDGETS].includes(v)) spec.list = v as Spec["list"];
+				if (["notes", "picked", "tasks", "tags", "backlinks", "habits", ...WIDGETS].includes(v)) spec.list = v as Spec["list"];
 				else spec.unknown.push(line);
 				break;
 			case "show":
@@ -141,6 +154,19 @@ export function parseSpec(source: string): Spec {
 			}
 			case "actions":
 				spec.actions = v.split(",").map((a) => a.trim()).filter(Boolean);
+				break;
+			case "note":
+				if (v) spec.notes.push(v.replace(/^\[\[|\]\]$/g, ""));
+				break;
+			case "pin":
+				if (v) spec.pin.push(v.toLowerCase());
+				break;
+			case "hide":
+				if (v) spec.hide.push(v.toLowerCase());
+				break;
+			case "group":
+				if (["folder", "tag", "none", ""].includes(v)) spec.group = v === "none" ? "" : (v as Spec["group"]);
+				else spec.unknown.push(line);
 				break;
 			default:
 				spec.unknown.push(line);
@@ -242,7 +268,12 @@ export function runQuery(spec: Spec, texts: Map<string, string>, resolve: (t: st
 		}
 	} else {
 		const target = spec.list === "backlinks" ? (spec.to ? resolve(spec.to) : here) : null;
-		for (const p of notes) {
+		// Hand-picked notes come along whatever the filters say; with no filter they're the whole list.
+		const picked = spec.notes.map((n) => resolve(n)).filter((p): p is string => !!p && p !== here && texts.has(p));
+		const filtered = !!(spec.from.length || spec.tag || spec.search || spec.where.length || target);
+		for (const p of picked) rows.push({ path: p, title: noteTitle(p), folder: p.split("/").slice(0, -1).join("/"), ...propsOf(texts.get(p) ?? "") });
+		for (const p of spec.list === "picked" || (picked.length && !filtered) ? [] : notes) {
+			if (picked.includes(p)) continue;
 			const text = texts.get(p) ?? "";
 			if (target && !linksIn(text).some((l) => resolve(l) === target)) continue;
 			const meta = propsOf(text);
@@ -252,12 +283,34 @@ export function runQuery(spec: Spec, texts: Map<string, string>, resolve: (t: st
 			rows.push({ path: p, title: noteTitle(p), folder: p.split("/").slice(0, -1).join("/"), ...meta });
 		}
 	}
-	// Sorting: by name unless told otherwise; a leading - reverses.
-	const by = spec.sort.replace(/^-/, "").toLowerCase() || (spec.list === "tasks" ? "due" : spec.list === "tags" ? "" : "name");
+	// Sorting: by name unless told otherwise (hand-picked lists keep their order); a leading - reverses.
+	const handPicked = spec.list === "picked" || (spec.notes.length && !(spec.from.length || spec.tag || spec.search || spec.where.length));
+	const by = spec.sort.replace(/^-/, "").toLowerCase() || (spec.list === "tasks" ? "due" : spec.list === "tags" || handPicked ? "" : "name");
 	const flip = spec.sort.startsWith("-") ? -1 : 1;
 	if (by) {
 		const key = (r: Row) => (by === "name" ? r.title.toLowerCase() : by === "due" ? (r.task?.due ?? "9999") : by === "folder" ? r.folder.toLowerCase() : (r.props[by] ?? "").toLowerCase());
 		rows.sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true }) * flip);
 	}
+	// Hidden ones out, pinned ones first (in the order they were pinned).
+	const nameOf = (r: Row) => r.title.toLowerCase();
+	if (spec.hide.length) rows = rows.filter((r) => !spec.hide.includes(nameOf(r)));
+	if (spec.pin.length) {
+		const rank = (r: Row) => {
+			const i = spec.pin.indexOf(nameOf(r));
+			return i < 0 ? spec.pin.length : i;
+		};
+		rows = rows.map((r, i) => ({ r, i })).sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i).map((x) => x.r);
+	}
 	return rows.slice(0, spec.limit);
+}
+
+/** Rows under small headings, for `group: folder | tag` (one group with no name otherwise). */
+export function groupRows(rows: Row[], group: Spec["group"]): Array<{ name: string; rows: Row[] }> {
+	if (!group) return [{ name: "", rows }];
+	const out = new Map<string, Row[]>();
+	for (const r of rows) {
+		const name = group === "folder" ? r.folder.split("/").pop() || "Top level" : r.tags[0] ? `#${r.tags[0]}` : "No tag";
+		out.set(name, [...(out.get(name) ?? []), r]);
+	}
+	return [...out].map(([name, rows]) => ({ name, rows }));
 }

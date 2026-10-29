@@ -15,6 +15,10 @@ import { markdown } from "../ai/markdown";
 import { WIDGETS, type Row, type Spec } from "../query";
 import { streak, type HabitDay } from "../habits";
 import { editInPlace, widget, type WidgetHooks } from "./widgets";
+import { groupRows } from "../query";
+import { PIECES, addCard, addNote, editCard, hide, moveCard, order, pin, removeCard, showHidden, unpin } from "./blockEdit";
+import { showMenu } from "../ui/ContextMenu.svelte";
+import { icon, type IconName } from "../ui/icons";
 
 export interface LiveHooks extends WidgetHooks {
 	/** Runs a ```basalt block. */
@@ -24,6 +28,10 @@ export interface LiveHooks extends WidgetHooks {
 	open(path: string): void;
 	toggleTask(path: string, line: number): void;
 	folderColor(folder: string): string | undefined;
+	/** Every note's name, for picking notes into a list. */
+	noteNames(): string[];
+	/** The folder the note with the block is in. */
+	folder(): string;
 	/** The habit tracker's data: habits and the last `days` days. */
 	habits(days: number): { list: string[]; days: HabitDay[] };
 	/** Opens (making it if needed) the daily note for a date. */
@@ -79,13 +87,88 @@ function setInPlace(view: EditorView, dom: HTMLElement, detail: { key: string; o
 	if (detail.value && !rows.some((l) => /^\s*==\s*$/.test(l))) view.dispatch({ changes: { from: start.to, insert: `\n${detail.key}: ${detail.value}` } });
 }
 
-/** The </> button on a block: opens it as text, with the cursor in it. */
-function editButton(view: EditorView, dom: HTMLElement) {
-	dom.addEventListener("basalt-set", (e) => setInPlace(view, dom, (e as CustomEvent).detail));
+/** A change to one block's lines (blockEdit.ts), sent up from a part of it as "basalt-organize". */
+type Organize = (lines: string[]) => string[];
+const organize = (from: HTMLElement, edit: Organize) => from.dispatchEvent(new CustomEvent("basalt-organize", { bubbles: true, detail: edit }));
+
+function rewrite(view: EditorView, dom: HTMLElement, edit: Organize) {
 	if (view.state.readOnly) return;
-	const b = el("button", "basalt-edit");
-	b.title = "Edit this block";
-	b.textContent = "</>";
+	const doc = view.state.doc;
+	const { start, end } = blockRange(view, dom);
+	if (end <= start.number) return;
+	const from = doc.line(start.number + 1).from, to = doc.line(end).from;
+	const body = view.state.sliceDoc(from, to).replace(/\n$/, "");
+	const next = edit(body.split("\n"));
+	// Nothing left: the whole block goes.
+	if (!next.some((l) => l.trim())) return removeBlock(view, dom);
+	const insert = next.join("\n");
+	if (insert !== body) view.dispatch({ changes: { from, to: to - 1, insert } });
+}
+
+/** The ```basalt blocks in the note, as line numbers. */
+function allBlocks(view: EditorView) {
+	const doc = view.state.doc;
+	const out: Array<{ start: number; end: number }> = [];
+	for (let n = 1; n <= doc.lines; n++) {
+		if (!/^```basalt\s*$/.test(doc.line(n).text.trim())) continue;
+		let end = n + 1;
+		while (end <= doc.lines && doc.line(end).text.trim() !== "```") end++;
+		if (end > doc.lines) break;
+		out.push({ start: n, end });
+		n = end;
+	}
+	return out;
+}
+
+/** Swaps a block with the one before or after it (what's between them stays put). */
+function moveBlock(view: EditorView, dom: HTMLElement, step: -1 | 1) {
+	const doc = view.state.doc;
+	const here = blockRange(view, dom).start.number;
+	const list = allBlocks(view);
+	const i = list.findIndex((b) => b.start === here);
+	const other = list[i + step];
+	if (i < 0 || !other) return;
+	const [first, second] = step < 0 ? [other, list[i]] : [list[i], other];
+	const range = (b: { start: number; end: number }) => ({ from: doc.line(b.start).from, to: doc.line(b.end).to });
+	const r1 = range(first), r2 = range(second);
+	view.dispatch({
+		changes: [
+			{ from: r1.from, to: r1.to, insert: view.state.sliceDoc(r2.from, r2.to) },
+			{ from: r2.from, to: r2.to, insert: view.state.sliceDoc(r1.from, r1.to) },
+		],
+	});
+}
+
+function removeBlock(view: EditorView, dom: HTMLElement) {
+	const doc = view.state.doc;
+	const { start, end } = blockRange(view, dom);
+	let from = start.from, to = doc.line(end).to;
+	// Take one blank line with it, so no gap is left behind.
+	if (to < doc.length && !doc.lineAt(to + 1).text.trim()) to = doc.lineAt(to + 1).to;
+	else if (start.number > 1 && !doc.line(start.number - 1).text.trim()) from = doc.line(start.number - 1).from;
+	view.dispatch({ changes: { from, to: Math.min(to + (to < doc.length ? 1 : 0), doc.length) } });
+}
+
+/** A new block after this one, with what was picked from the + menu. */
+function addBlock(view: EditorView, dom: HTMLElement, lines: string[]) {
+	const end = view.state.doc.line(blockRange(view, dom).end).to;
+	view.dispatch({ changes: { from: end, insert: `\n\n\`\`\`basalt\n${lines.join("\n")}\n\`\`\`` } });
+}
+
+/** The + menu: pieces to add to the dashboard. */
+function piecesMenu(e: MouseEvent, folder: string, add: (lines: string[]) => void) {
+	const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+	showMenu(
+		new MouseEvent("contextmenu", { clientX: r.left, clientY: r.bottom + 4 }),
+		PIECES.map((p) => ({ label: p.name, icon: p.icon as IconName, run: () => add(p.lines(folder)) })),
+	);
+}
+
+function toolButton(name: IconName | "</>", title: string, run: (e: MouseEvent) => void) {
+	const b = el("button", "basalt-tool");
+	b.title = title;
+	if (name === "</>") b.textContent = name;
+	else b.innerHTML = icon(name, 13);
 	b.addEventListener("mousedown", (e) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -93,13 +176,50 @@ function editButton(view: EditorView, dom: HTMLElement) {
 	b.addEventListener("click", (e) => {
 		e.preventDefault();
 		e.stopPropagation();
-		const doc = view.state.doc;
-		const { start, end } = blockRange(view, dom);
-		const to = doc.line(end).to;
-		view.dispatch({ effects: editBlock.of({ from: start.from, to }), selection: { anchor: Math.min(to, doc.line(Math.min(start.number + 1, doc.lines)).to) } });
-		view.focus();
+		run(e);
 	});
-	dom.append(b);
+	return b;
+}
+
+/**
+ * A block's tools, shown on hover while editing: move it up or down, add a
+ * piece after it, open it as text (</>), or remove it. Also where changes made
+ * inside the block (a title edited in place, a pinned note) are written back.
+ */
+function blockTools(view: EditorView, dom: HTMLElement, hooks: LiveHooks) {
+	dom.addEventListener("basalt-set", (e) => setInPlace(view, dom, (e as CustomEvent).detail));
+	dom.addEventListener("basalt-organize", (e) => rewrite(view, dom, (e as CustomEvent).detail as Organize));
+	if (view.state.readOnly) return;
+	const bar = el("div", "basalt-tools");
+	bar.append(
+		toolButton("up", "Move up", () => moveBlock(view, dom, -1)),
+		toolButton("down", "Move down", () => moveBlock(view, dom, 1)),
+		toolButton("plus", "Add something after this", (e) => piecesMenu(e, hooks.folder(), (lines) => addBlock(view, dom, lines))),
+		toolButton("</>", "Edit this block as text", () => {
+			const doc = view.state.doc;
+			const { start, end } = blockRange(view, dom);
+			const to = doc.line(end).to;
+			view.dispatch({ effects: editBlock.of({ from: start.from, to }), selection: { anchor: Math.min(to, doc.line(Math.min(start.number + 1, doc.lines)).to) } });
+			view.focus();
+		}),
+		toolButton("trash", "Remove (Ctrl+Z brings it back)", () => removeBlock(view, dom)),
+	);
+	dom.append(bar);
+}
+
+/** A card's tools inside a block laid out in columns: move it around, add one under it, remove it. */
+function cardTools(box: HTMLElement, card: number, hooks: LiveHooks) {
+	const bar = el("div", "basalt-tools basalt-card-tools");
+	const send = (edit: Organize) => organize(box, edit);
+	bar.append(
+		toolButton("back", "Move to the column on the left", () => send((l) => moveCard(l, card, "left"))),
+		toolButton("up", "Move up", () => send((l) => moveCard(l, card, "up"))),
+		toolButton("down", "Move down", () => send((l) => moveCard(l, card, "down"))),
+		toolButton("forward", "Move to the column on the right", () => send((l) => moveCard(l, card, "right"))),
+		toolButton("plus", "Add a card under this one", (e) => piecesMenu(e, hooks.folder(), (lines) => send((l) => addCard(l, card, lines)))),
+		toolButton("trash", "Remove this card (Ctrl+Z brings it back)", () => send((l) => removeCard(l, card))),
+	);
+	box.append(bar);
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string) => {
@@ -152,13 +272,14 @@ class RowWidget extends WidgetType {
 		const row = el("div", "basalt-row");
 		if (widths) row.style.gridTemplateColumns = widths.split(/[\s,]+/).map((w) => (/^\d+(\.\d+)?$/.test(w) ? `${w}fr` : w)).join(" ");
 		else row.style.gridTemplateColumns = `repeat(${columns.length}, minmax(0, 1fr))`;
+		let n = 0;
 		for (const column of columns) {
 			const col = el("div", "basalt-column");
-			for (const card of column.split(/^\s*--\s*$/m)) if (card.trim()) col.append(new QueryWidget(card, this.stamp, this.hooks, this.reading).draw(later));
+			for (const card of column.split(/^\s*--\s*$/m)) if (card.trim()) col.append(new QueryWidget(card, this.stamp, this.hooks, this.reading, n++, true).draw(later));
 			row.append(col);
 		}
 		stops.set(row, later);
-		editButton(view, row);
+		blockTools(view, row, this.hooks);
 		return row;
 	}
 
@@ -176,7 +297,11 @@ class QueryWidget extends WidgetType {
 		private source: string,
 		private stamp: number,
 		private hooks: LiveHooks,
-		private reading = false
+		private reading = false,
+		/** Which card it is, counting in reading order (0 when it's a block of its own). */
+		private card = 0,
+		/** One of several cards laid out in columns. */
+		private inRow = false
 	) {
 		super();
 	}
@@ -189,7 +314,7 @@ class QueryWidget extends WidgetType {
 		const later: Array<() => void> = [];
 		const dom = this.draw(later);
 		stops.set(dom, later);
-		editButton(view, dom);
+		blockTools(view, dom, this.hooks);
 		return dom;
 	}
 
@@ -198,6 +323,17 @@ class QueryWidget extends WidgetType {
 	}
 
 	draw(later: Array<() => void>): HTMLElement {
+		const box = this.drawInner(later);
+		if (this.inRow && !this.reading) cardTools(box, this.card, this.hooks);
+		return box;
+	}
+
+	/** Sends a change to this card's own lines. */
+	private change(from: HTMLElement, edit: (card: string[]) => string[]) {
+		organize(from, (lines) => editCard(lines, this.card, edit));
+	}
+
+	private drawInner(later: Array<() => void>): HTMLElement {
 		const { spec, rows } = this.hooks.runBlock(this.source);
 		const box = el("div", `basalt-block basalt-show-${spec.show} basalt-list-${spec.list}`);
 		if (spec.title) {
@@ -232,34 +368,125 @@ class QueryWidget extends WidgetType {
 			box.append(table);
 			return box;
 		}
+		const groups = groupRows(rows, spec.group);
 		if (spec.show === "cards") {
-			const grid = el("div", "basalt-cards");
-			for (const r of rows) {
-				const card = el("div", "basalt-card");
-				const color = this.hooks.folderColor(r.folder.split("/")[0]);
-				if (color) card.style.setProperty("--card-color", color);
-				card.append(el("div", "basalt-card-title", r.title));
-				if (r.description) card.append(el("div", "basalt-card-text", r.description));
-				const meta = el("div", "basalt-card-meta", [r.folder, ...r.tags.slice(0, 3).map((t) => `#${t}`)].filter(Boolean).join(" · "));
-				if (r.task?.due) meta.textContent = `due ${r.task.due}`;
-				if (r.count != null) meta.textContent = `${r.count} ${r.count === 1 ? "note" : "notes"}`;
-				card.append(meta);
-				if (r.path) link(card, () => this.hooks.open(r.path));
-				grid.append(card);
+			for (const g of groups) {
+				if (g.name) box.append(el("div", "basalt-group", g.name));
+				const grid = el("div", "basalt-cards");
+				for (const r of g.rows) {
+					const card = el("div", "basalt-card");
+					const color = this.hooks.folderColor(r.folder.split("/")[0]);
+					if (color) card.style.setProperty("--card-color", color);
+					card.append(el("div", "basalt-card-title", r.title));
+					if (r.description) card.append(el("div", "basalt-card-text", r.description));
+					const meta = el("div", "basalt-card-meta", [r.folder, ...r.tags.slice(0, 3).map((t) => `#${t}`)].filter(Boolean).join(" · "));
+					if (r.task?.due) meta.textContent = `due ${r.task.due}`;
+					if (r.count != null) meta.textContent = `${r.count} ${r.count === 1 ? "note" : "notes"}`;
+					card.append(meta);
+					if (r.path) link(card, () => this.hooks.open(r.path));
+					this.arrange(card, r, spec, rows);
+					grid.append(card);
+				}
+				box.append(grid);
 			}
-			box.append(grid);
+			this.extras(box, spec);
 			return box;
 		}
-		const list = el("ul", "basalt-items");
-		for (const r of rows) {
-			const li = el("li");
-			li.append(this.item(r, spec));
-			if (r.task?.due) li.append(el("span", "basalt-due", r.task.due));
-			if (r.count != null) li.append(el("span", "basalt-due", String(r.count)));
-			list.append(li);
+		for (const g of groups) {
+			if (g.name) box.append(el("div", "basalt-group", g.name));
+			const list = el("ul", "basalt-items");
+			for (const r of g.rows) {
+				const li = el("li");
+				li.append(this.item(r, spec));
+				if (r.task?.due) li.append(el("span", "basalt-due", r.task.due));
+				if (r.count != null) li.append(el("span", "basalt-due", String(r.count)));
+				this.arrange(li, r, spec, rows);
+				list.append(li);
+			}
+			box.append(list);
 		}
-		box.append(list);
+		this.extras(box, spec);
 		return box;
+	}
+
+	/**
+	 * While editing: pin or hide a row (buttons on hover), and drag rows into
+	 * the order you want (which pins them all, in that order).
+	 */
+	private arrange(row: HTMLElement, r: Row, spec: Spec, all: Row[]) {
+		if (this.reading || !r.title) return;
+		const pinned = spec.pin.includes(r.title.toLowerCase());
+		const picked = spec.notes.some((n) => n.toLowerCase() === r.title.toLowerCase());
+		row.classList.add("basalt-arrangeable");
+		if (pinned) row.classList.add("is-pinned");
+		const tools = el("span", "basalt-row-tools");
+		tools.append(
+			toolButton("pin", pinned ? "Unpin" : "Pin to the top", () => this.change(row, (c) => (pinned ? unpin(c, r.title) : pin(c, r.title)))),
+			spec.list === "picked" || (picked && !spec.from.length && !spec.tag)
+				? toolButton("x", "Take out of this list", () => this.change(row, (c) => c.filter((l) => !(/^\s*note\s*:/i.test(l) && l.split(":").slice(1).join(":").trim().toLowerCase() === r.title.toLowerCase()))))
+				: toolButton("eyeOff", "Hide from this list", () => this.change(row, (c) => hide(c, r.title))),
+		);
+		row.append(tools);
+		// Dragging rows into order.
+		row.draggable = true;
+		row.addEventListener("dragstart", (e) => {
+			e.stopPropagation();
+			e.dataTransfer?.setData("text/basalt-row", r.title);
+			row.classList.add("is-dragging");
+		});
+		row.addEventListener("dragend", () => row.classList.remove("is-dragging"));
+		row.addEventListener("dragover", (e) => {
+			if (!e.dataTransfer?.types.includes("text/basalt-row")) return;
+			e.preventDefault();
+			e.stopPropagation();
+			const after = e.offsetY > row.offsetHeight / 2 || (row.classList.contains("basalt-card") && e.offsetX > row.offsetWidth / 2);
+			row.classList.toggle("drop-before", !after);
+			row.classList.toggle("drop-after", after);
+		});
+		row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
+		row.addEventListener("drop", (e) => {
+			const moved = e.dataTransfer?.getData("text/basalt-row");
+			const after = row.classList.contains("drop-after");
+			row.classList.remove("drop-before", "drop-after");
+			if (!moved || moved === r.title) return;
+			e.preventDefault();
+			e.stopPropagation();
+			const names = all.map((x) => x.title).filter((t) => t !== moved);
+			names.splice(names.indexOf(r.title) + (after ? 1 : 0), 0, moved);
+			this.change(row, (c) => order(c, names));
+		});
+	}
+
+	/** Under a list while editing: pick a note into it, and bring back hidden ones. */
+	private extras(box: HTMLElement, spec: Spec) {
+		if (this.reading) return;
+		const foot = el("div", "basalt-foot");
+		if (spec.list === "notes" || spec.list === "picked") {
+			const input = el("input", "basalt-pick") as HTMLInputElement;
+			input.placeholder = "+ Add a note…";
+			const id = `basalt-notes-${Math.random().toString(36).slice(2)}`;
+			const options = el("datalist");
+			options.id = id;
+			input.setAttribute("list", id);
+			input.addEventListener("focus", () => options.replaceChildren(...this.hooks.noteNames().map((n) => Object.assign(document.createElement("option"), { value: n }))), { once: true });
+			for (const ev of ["mousedown", "keyup", "input", "paste", "beforeinput"]) input.addEventListener(ev, (e) => e.stopPropagation());
+			input.addEventListener("keydown", (e) => {
+				e.stopPropagation();
+				if (e.key !== "Enter") return;
+				e.preventDefault();
+				const name = input.value.trim();
+				const real = this.hooks.noteNames().find((n) => n.toLowerCase() === name.toLowerCase());
+				if (real) this.change(input, (c) => pin(addNote(c, real), real));
+				else input.select();
+			});
+			foot.append(input, options);
+		}
+		if (spec.hide.length) {
+			const back = el("button", "basalt-unhide", `${spec.hide.length} hidden · show`);
+			link(back, () => this.change(back, showHidden));
+			foot.append(back);
+		}
+		if (foot.childElementCount) box.append(foot);
 	}
 
 	/** Habits down the side, days across; a filled square is a day it was done. */
@@ -416,9 +643,32 @@ export const liveBlocks = (hooks: LiveHooks) => {
 
 const look = EditorView.theme({
 	".basalt-block, .basalt-row": { position: "relative" },
-	".basalt-edit": { position: "absolute", top: "6px", right: "6px", zIndex: "3", padding: "2px 7px", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--raised)", color: "var(--muted)", font: "11px var(--font-code)", cursor: "pointer", opacity: "0", transition: "opacity var(--dur) var(--ease)" },
-	".basalt-block:hover > .basalt-edit, .basalt-row:hover > .basalt-edit": { opacity: "1" },
-	".basalt-edit:hover": { color: "var(--accent)", borderColor: "var(--accent)" },
+	".basalt-tools": { position: "absolute", top: "6px", right: "6px", zIndex: "3", display: "flex", gap: "1px", padding: "2px", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "var(--surface-float, var(--raised))", backdropFilter: "blur(8px)", opacity: "0", pointerEvents: "none", transition: "opacity var(--dur) var(--ease)" },
+	".basalt-block:hover > .basalt-tools, .basalt-row:hover > .basalt-tools": { opacity: "1", pointerEvents: "auto" },
+	".basalt-row:hover > .basalt-column .basalt-card-tools": { opacity: "0" },
+	".basalt-row .basalt-block:hover > .basalt-card-tools": { opacity: "1", pointerEvents: "auto" },
+	// A row's own tools sit on its top edge, on the left, clear of its cards' tools.
+	".basalt-row > .basalt-tools": { top: "-13px", left: "14px", right: "auto" },
+	".basalt-card-tools": { top: "4px", right: "4px" },
+	".basalt-tool": { display: "grid", placeItems: "center", minWidth: "22px", height: "22px", padding: "0 4px", border: "0", borderRadius: "calc(var(--radius) * 0.6)", background: "transparent", color: "var(--muted)", font: "11px var(--font-code)", cursor: "pointer" },
+	".basalt-tool:hover": { background: "var(--hover)", color: "var(--accent)" },
+	".basalt-arrangeable": { position: "relative" },
+	".basalt-row-tools": { display: "inline-flex", gap: "1px", marginLeft: "auto", opacity: "0", transition: "opacity var(--dur) var(--ease)" },
+	".basalt-card .basalt-row-tools": { position: "absolute", top: "6px", right: "6px", padding: "1px", borderRadius: "var(--radius)", background: "var(--surface-float, var(--raised))" },
+	".basalt-arrangeable:hover > .basalt-row-tools": { opacity: "1" },
+	".basalt-row-tools .basalt-tool": { minWidth: "20px", height: "20px" },
+	".basalt-arrangeable.is-pinned > .basalt-item .basalt-link::before, .basalt-card.is-pinned .basalt-card-title::before": { content: "'📌 '", fontSize: "0.8em" },
+	".basalt-arrangeable.is-dragging": { opacity: "0.4" },
+	".basalt-arrangeable.drop-before": { boxShadow: "0 -2px 0 var(--accent)" },
+	".basalt-arrangeable.drop-after": { boxShadow: "0 2px 0 var(--accent)" },
+	".basalt-card.drop-before": { boxShadow: "-3px 0 0 var(--accent)" },
+	".basalt-card.drop-after": { boxShadow: "3px 0 0 var(--accent)" },
+	".basalt-group": { margin: "10px 0 4px", color: "var(--muted)", fontSize: "0.78em", fontWeight: "650", letterSpacing: "0.06em", textTransform: "uppercase" },
+	".basalt-foot": { display: "flex", alignItems: "center", gap: "10px", marginTop: "6px" },
+	".basalt-pick": { flex: "1", minWidth: "0", padding: "3px 8px", border: "1px dashed var(--border)", borderRadius: "var(--radius)", outline: "0", background: "transparent", color: "var(--text)", font: "inherit", fontSize: "0.9em", opacity: "0.6", transition: "opacity var(--dur) var(--ease)" },
+	".basalt-pick:focus, .basalt-block:hover .basalt-pick": { opacity: "1" },
+	".basalt-pick:focus": { borderColor: "var(--accent)", borderStyle: "solid" },
+	".basalt-unhide": { border: "0", background: "transparent", color: "var(--muted)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" },
 	".basalt-block, .basalt-embed": { margin: "8px 0 12px", fontFamily: "var(--font-ui)", fontSize: "0.92em", lineHeight: "1.5" },
 	".basalt-title": { marginBottom: "6px", color: "var(--heading)", fontWeight: "650", fontSize: "1.05em" },
 	".basalt-warn": { marginBottom: "6px", color: "#e5a84b", fontSize: "0.85em" },

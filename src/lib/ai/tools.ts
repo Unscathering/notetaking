@@ -109,7 +109,7 @@ export const TOOLS = [
 	),
 	fn(
 		"create_dashboard",
-		"Propose a dashboard: Basalt writes the live lists for you. To turn a note the user has into a dashboard, give that note's own name as path (like 'Cell notes'): the lists are added to the end of it. A path that doesn't exist makes a new dashboard note. Use this instead of writing ```basalt blocks yourself.",
+		"Propose a dashboard: Basalt writes the live lists for you. To turn a note the user has into a dashboard, give that note's own name as path (like 'Cell notes'): the lists are added to the end of it. A path that doesn't exist makes a new dashboard note. Use this instead of writing ```basalt blocks yourself. Keep it small: only the sections asked for, or 2 or 3 if they didn't say. People add more pieces with the + on any block, and pin, hide and drag notes into order themselves.",
 		{
 			path: s("The note, like 'School/School dashboard'."),
 			folder: s("Optional: only show what's in this folder."),
@@ -136,7 +136,7 @@ export const TOOLS = [
 		{
 			path: s("The note."),
 			title: s("A heading above it."),
-			list: s("notes, tasks, tags, backlinks or habits."),
+			list: s("notes, picked (only the notes named in notes), tasks, tags, backlinks or habits."),
 			show: s("list, cards, table or count."),
 			from: s("Optional: only notes in these folders, separated by commas. Use this to list a folder, like 'Recipes'."),
 			tag: s("Optional: only notes with this #tag (not for folders)."),
@@ -144,6 +144,8 @@ export const TOOLS = [
 			due: s("Optional, for tasks: today, week, overdue or any."),
 			sort: s("Optional: name, due, folder or a property; '-' in front reverses."),
 			limit: n("Optional: how many."),
+			group: s("Optional: folder or tag, to split the list under small headings."),
+			notes: { type: "array", items: { type: "string" }, description: "Optional: notes to put in the list by name, in order (for list 'picked', or added to the others)." },
 		},
 		["path", "list"]
 	),
@@ -718,7 +720,7 @@ days: 14`)}
 
 /** What a dashboard can show, and the block for each. */
 const SECTIONS: Record<string, { title: string; block: (from: string) => string }> = {
-	notes: { title: "Notes", block: (f) => `title: Notes${f ? `\nfrom: ${f}` : ""}\nshow: cards\nsort: name` },
+	notes: { title: "Notes", block: (f) => `title: Notes${f ? `\nfrom: ${f}` : ""}\nshow: cards\nsort: name\nlimit: 8` },
 	recent: { title: "Recent notes", block: (f) => `title: Recent notes${f ? `\nfrom: ${f}` : ""}\nsort: -name\nlimit: 8` },
 	tasks: { title: "Open tasks", block: (f) => `title: Open tasks\nlist: tasks${f ? `\nfrom: ${f}` : ""}` },
 	due_this_week: { title: "Due this week", block: (f) => `title: Due this week\nlist: tasks${f ? `\nfrom: ${f}` : ""}\ndue: week` },
@@ -734,11 +736,13 @@ const dashboardBlocks = (sections: string[], from: string) => blocks(...sections
 
 /** A live block's lines from the AI's answers, keeping only what was given. */
 function liveBlock(a: Args): string {
-	return ["title", "list", "show", "from", "tag", "where", "due", "sort", "limit"]
-		.map((k) => [k, str(a[k])])
-		.filter(([, v]) => v)
-		.map(([k, v]) => `${k}: ${v}`)
-		.join("\n");
+	return [
+		...["title", "list", "show", "from", "tag", "where", "due", "sort", "limit", "group"]
+			.map((k) => [k, str(a[k])])
+			.filter(([, v]) => v)
+			.map(([k, v]) => `${k}: ${v}`),
+		...(Array.isArray(a.notes) ? a.notes.map((x) => `note: ${str(x)}`) : []),
+	].join("\n");
 }
 
 /**

@@ -96,7 +96,9 @@ select:focus-visible {
 .is-reading .cm-block-handle,
 .is-reading .cm-drop-line,
 .is-reading .cm-table-bar,
-.is-reading .basalt-edit,
+.is-reading .basalt-tools,
+.is-reading .basalt-row-tools,
+.is-reading .basalt-foot,
 .is-reading .cm-placeholder {
 	display: none !important;
 }
