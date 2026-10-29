@@ -10,6 +10,7 @@
 import { joinPath, noteTitle } from "./cave";
 import { ws } from "./workspace.svelte";
 import { habitLines } from "./habits";
+import { KOMOREBI_HOME, KOMOREBI_WRITING } from "./komorebi";
 
 export const TEMPLATE_FOLDER = "Templates";
 export const DAILY_FOLDER = "Daily";
@@ -130,6 +131,8 @@ list: tags
 limit: 12
 \`\`\`
 `,
+	"Komorebi dashboard": KOMOREBI_HOME(),
+	"Writing dashboard": KOMOREBI_WRITING(),
 	Board: `---
 basalt: board
 ---
@@ -181,7 +184,10 @@ export async function fromTemplate(name: string) {
 	const open = ws.note;
 	const folder = open && !open.startsWith(`${TEMPLATE_FOLDER}/`) ? open.split("/").slice(0, -1).join("/") : "";
 	const title = name === "Daily note" ? dateName(new Date()) : `New ${name.toLowerCase()}`;
-	const path = await ws.cave.create(folder, title, fill(t.path ? await ws.cave.read(t.path) : t.text(), title));
+	const body = fill(t.path ? await ws.cave.read(t.path) : t.text(), title);
+	const path = await ws.cave.create(folder, title, body);
+	// A dashboard made with a look needs that look's snippet.
+	if (/cssclass:.*\bkomorebi\b/.test(body)) void import("./snippets.svelte").then((m) => m.useExample("komorebi"));
 	await ws.refresh();
 	await ws.open(path);
 	ws.renaming = title.startsWith("New ") ? path : null;

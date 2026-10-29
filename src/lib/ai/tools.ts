@@ -9,6 +9,7 @@ import { recall } from "./recall";
 import { lookUp, TOPICS } from "./manual";
 import { parseSpec } from "../query";
 import { fill, templates } from "../templates";
+import { COLORWAYS, KOMOREBI_HOME } from "../komorebi";
 import { FONT_CHOICES, GLASS_DEFAULTS, PRESETS, SIDEBAR_STYLES, WALLPAPERS, cloneTheme, type HeadingStyle, type Theme } from "../theme/theme";
 import { theme, useTheme } from "../theme/store.svelte";
 import { ws } from "../workspace.svelte";
@@ -102,8 +103,8 @@ export const TOOLS = [
 	),
 	fn(
 		"create_home",
-		"Propose a home page: a dashboard note that links to every area's dashboard and shows what's due, made the cave's home page. Basalt writes it. Use it once, after create_space for each area.",
-		{ title: s("The page's name; 'Home' if left out."), spaces: { type: "array", items: { type: "string" }, description: "The names of the areas (folders) to link to." } },
+		"Propose a home page: a dashboard note that links to every area's dashboard and shows what's due, made the cave's home page. Basalt writes it. Use it once, after create_space for each area. style 'komorebi' makes it a frosted-glass dashboard with a clock header, tiles for the areas, a calendar, a focus timer and quick capture.",
+		{ title: s("The page's name; 'Home' if left out."), spaces: { type: "array", items: { type: "string" }, description: "The names of the areas (folders) to link to." }, style: s("Optional: 'plain' (default) or 'komorebi'."), colorway: s("For komorebi: indigo, sakura, matcha, ember, glacier or mono.") },
 		["spaces"]
 	),
 	fn(
@@ -112,7 +113,9 @@ export const TOOLS = [
 		{
 			path: s("The note, like 'School/School dashboard'."),
 			folder: s("Optional: only show what's in this folder."),
-			sections: { type: "array", description: "What to show, in order.", items: { type: "string", enum: ["notes", "recent", "tasks", "due_this_week", "overdue", "tags", "habits"] } },
+			sections: { type: "array", description: "What to show, in order.", items: { type: "string", enum: ["notes", "recent", "tasks", "due_this_week", "overdue", "tags", "habits", "calendar", "timer", "capture", "actions"] } },
+			style: s("Optional: 'plain' (default) or 'komorebi' (frosted-glass tiles with a clock header; only for a new note)."),
+			colorway: s("For komorebi: indigo, sakura, matcha, ember, glacier or mono."),
 		},
 		["path", "sections"]
 	),
@@ -525,11 +528,13 @@ export async function apply(c: Change): Promise<Undo> {
 		case "create_home": {
 			const title = str(a.title) || "Home";
 			const spaces = (Array.isArray(a.spaces) ? a.spaces : []).map((x) => folderPath(x)).filter(Boolean);
-			const made = await cave.create("", title, homeDashboard(title, spaces.length ? spaces : ws.folders.filter((f) => !f.includes("/"))));
+			const areas = spaces.length ? spaces : ws.folders.filter((f) => !f.includes("/"));
+			const komorebi = str(a.style).toLowerCase() === "komorebi";
+			const made = await cave.create("", title, komorebi ? komorebiHome(title, areas, str(a.colorway)) : homeDashboard(title, areas));
 			await ws.refresh();
 			const before = ws.meta.home;
 			await ws.setHome(made);
-			await useDashboardSnippet();
+			await (komorebi ? useLook("komorebi") : useDashboardSnippet());
 			return async () => {
 				ws.meta.home = before;
 				await ws.saveMeta();
@@ -550,9 +555,11 @@ export async function apply(c: Change): Promise<Undo> {
 			}
 			const path = notePath(a.path);
 			const title = baseName(path).replace(/\.md$/i, "");
-			const made = await cave.create(parentOf(path), title, `---\ncssclass: dashboard\n---\n# ${title}\n\n${dashboardBlocks(sections, folderPath(a.folder))}\n`);
+			const komorebi = str(a.style).toLowerCase() === "komorebi";
+			const body = komorebi ? komorebiDashboard(title, sections, folderPath(a.folder), str(a.colorway)) : `---\ncssclass: dashboard\n---\n# ${title}\n\n${dashboardBlocks(sections, folderPath(a.folder))}\n`;
+			const made = await cave.create(parentOf(path), title, body);
 			await ws.refresh();
-			await useDashboardSnippet();
+			await (komorebi ? useLook("komorebi") : useDashboardSnippet());
 			return () => ws.remove(made);
 		}
 		case "add_live_block": {
@@ -676,6 +683,10 @@ const SECTIONS: Record<string, { title: string; block: (from: string) => string 
 	overdue: { title: "Overdue", block: (f) => `title: Overdue\nlist: tasks${f ? `\nfrom: ${f}` : ""}\ndue: overdue\nshow: count` },
 	tags: { title: "Tags", block: (f) => `title: Tags${f ? `\nfrom: ${f}` : ""}\nlist: tags\nlimit: 12` },
 	habits: { title: "Habits", block: () => "title: Habits\nlist: habits\ndays: 21" },
+	calendar: { title: "Calendar", block: () => "title: Calendar\nlist: calendar" },
+	timer: { title: "Focus timer", block: () => "title: Focus timer\nlist: timer\ntext: 25" },
+	capture: { title: "Quick capture", block: (f) => `title: Quick capture\nlist: capture\nto: ${f ? `${f}/Inbox` : "Inbox"}` },
+	actions: { title: "Quick actions", block: () => "title: Quick actions\nlist: actions" },
 };
 const dashboardBlocks = (sections: string[], from: string) => blocks(...sections.filter((x) => x in SECTIONS).map((x) => SECTIONS[x].block(from)));
 
@@ -742,6 +753,44 @@ export const selectorProblem = (css: string) => {
 
 /** A snippet's file name, without .css: lowercase words and dashes. */
 const snippetName = (v: unknown) => str(v).replace(/\.css$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+
+/** A color way Komorebi knows, or the original. */
+const colorway = (v: string) => (COLORWAYS.some((c) => c.id === v.toLowerCase()) ? v.toLowerCase() : "indigo");
+
+/** A tile for a folder: its emoji icon if it has one. */
+const tileFor = (folder: string) => {
+	const icon = ws.meta.looks[folder]?.icon ?? "";
+	return `tile: ${folder.split("/").pop()}${icon && icon !== "folder" ? ` | ${icon}` : ""}${folder.includes("/") ? `${icon && icon !== "folder" ? "" : " |"} | ${folder}` : ""}`;
+};
+
+/** A Komorebi home page: the template, with the areas as its tiles. */
+function komorebiHome(title: string, areas: string[], way: string): string {
+	return KOMOREBI_HOME(colorway(way))
+		.replace("title: My Vault", `title: ${title}`)
+		.replace(/(tile: .*\n)+/, areas.length ? `${areas.map(tileFor).join("\n")}\n` : "tile: Notes\n");
+}
+
+/** A Komorebi dashboard: a header, the folder's subfolders as tiles, and the sections as glass cards in two columns. */
+function komorebiDashboard(title: string, sections: string[], from: string, way: string): string {
+	const WIDGET: Record<string, string> = {
+		calendar: "title: calendar\nlist: calendar",
+		timer: "title: pomodoro\nlist: timer\ntext: 25",
+		capture: `title: quick capture\nlist: capture\nto: ${from ? `${from}/Inbox` : "Inbox"}`,
+		actions: "title: system\nlist: actions",
+	};
+	const cards = sections.map((x) => WIDGET[x] ?? (x in SECTIONS ? SECTIONS[x].block(from).replace(/^title: (.*)$/m, (_, t: string) => `title: ${t.toLowerCase()}`) : "")).filter(Boolean);
+	const subfolders = ws.folders.filter((f) => from && f.startsWith(`${from}/`) && !f.slice(from.length + 1).includes("/"));
+	const tiles = subfolders.length ? `\n\n\`\`\`basalt\ntitle: collection\nlist: tiles\n${subfolders.map(tileFor).join("\n")}\n\`\`\`` : "";
+	const half = Math.ceil(cards.length / 2);
+	const columns = cards.length > 1 ? `\`\`\`basalt\ncolumns: 1fr 1fr\n==\n${cards.slice(0, half).join("\n--\n")}\n==\n${cards.slice(half).join("\n--\n")}\n\`\`\`` : blocks(...cards);
+	return `---\ncssclass: dashboard komorebi ${colorway(way)}\n---\n\`\`\`basalt\nlist: header\ntitle: ${title}\ntext: ${from ? `everything in ${from.toLowerCase()}` : "notes, thoughts & things that matter"}\n\`\`\`${tiles}\n\n${columns}\n`;
+}
+
+/** Turns on one of the example snippets (a dashboard look), once. */
+async function useLook(name: string) {
+	const { useExample } = await import("../snippets.svelte");
+	await useExample(name);
+}
 
 /** Dashboards look best with the dashboard snippet; turn it on once. */
 async function useDashboardSnippet() {

@@ -5,6 +5,8 @@ import { parseSpec, runQuery } from "./query";
 import { ws } from "./workspace.svelte";
 import { habitDays, habitList } from "./habits";
 import { openDay } from "./templates";
+import { focus, pauseFocus, startFocus, stopFocus } from "./focus.svelte";
+import { noteTitle } from "./cave";
 
 /** The part of a note under one heading, down to the next heading as big or bigger. */
 function section(text: string, heading: string): string | null {
@@ -45,5 +47,46 @@ export function liveHooksFor(here: string): LiveHooks {
 		folderColor: (folder) => ws.meta.looks[folder]?.color,
 		habits: (days) => ({ list: habitList(ws.texts), days: habitDays(ws.texts, days) }),
 		openDay: (date) => void openDay(new Date(`${date}T12:00:00`)),
+		openTarget(name) {
+			const want = name.trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+			const folder = ws.folders.find((f) => f.toLowerCase() === want) ?? ws.folders.find((f) => f.split("/").pop()!.toLowerCase() === want);
+			if (folder) {
+				const last = folder.split("/").pop()!;
+				// The folder's dashboard, or a note named like it, or the whole folder as a table.
+				const inside = [`${folder}/${last} dashboard.md`, `${folder}/${last}.md`, `${folder}/Home.md`].find((p) => ws.files.includes(p));
+				return void ws.open(inside ?? `basalt:db:${folder}`);
+			}
+			void ws.follow(name);
+		},
+		imageUrl: (src) => ws.cave?.fileUrl(src) ?? Promise.resolve(null),
+		run: (command) => void import("./commands").then((m) => m.COMMANDS.find((c) => c.id === command)?.run()),
+		stats() {
+			let open = 0, done = 0;
+			for (const [p, t] of ws.texts) {
+				if (p.startsWith("Templates/")) continue;
+				for (const m of t.matchAll(/^\s*[-*+]\s+\[([ xX])\]/gm)) m[1] === " " ? open++ : done++;
+			}
+			return { notes: ws.files.filter((f) => !f.startsWith("Templates/")).length, open, done };
+		},
+		dailyDates: () => new Set(ws.files.map((f) => noteTitle(f)).filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t))),
+		timer: {
+			state: () => ({ phase: focus.phase, left: focus.left, paused: !!focus.paused, minutes: focus.minutes, count: focus.count }),
+			start: (minutes) => startFocus(minutes),
+			pause: () => pauseFocus(),
+			stop: () => stopFocus(),
+		},
+		async capture(note, text) {
+			if (!ws.cave) return;
+			const stamp = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+			const path = ws.resolve(note);
+			if (path) {
+				const old = ws.texts.get(path) ?? (await ws.cave.read(path));
+				await ws.writeNote(path, `${old.replace(/\s+$/, "")}\n\n## ${stamp}\n\n${text}\n`);
+			} else {
+				const name = note.split("/").pop()!;
+				await ws.cave.create(note.split("/").slice(0, -1).join("/"), name, `# ${name}\n\n## ${stamp}\n\n${text}\n`);
+				await ws.refresh();
+			}
+		},
 	};
 }

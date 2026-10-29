@@ -2,6 +2,13 @@
   "about": "Snippets, themes and dashboards for Basalt, shared by people who use it. Add yours with a pull request: see MODDING.md.",
   "snippets": [
     {
+      "id": "komorebi",
+      "name": "Komorebi",
+      "about": "Frosted glass dashboard tiles with // labels, a clock header and tiles that breathe. Color ways: indigo, sakura, matcha, ember, glacier, mono (add one after komorebi in cssclass).",
+      "author": "Basalt, after InlitX's Dashboard-Komorebi",
+      "file": "snippets/komorebi.css"
+    },
+    {
       "id": "dashboard",
       "name": "Dashboard",
       "about": "For notes with cssclass: dashboard. Wide, no properties header, big titles, roomy cards.",
@@ -133,6 +140,22 @@
     }
   ],
   "dashboards": [
+    {
+      "id": "komorebi-home",
+      "name": "Komorebi home",
+      "about": "A clock header, today's goal, quick actions, picture tiles, a calendar, a pomodoro timer, habits and quick capture, in frosted indigo glass.",
+      "author": "Basalt, after InlitX",
+      "file": "dashboards/komorebi-home.md",
+      "snippet": "snippets/komorebi.css"
+    },
+    {
+      "id": "komorebi-writing",
+      "name": "Komorebi writing dashboard",
+      "about": "What you're writing, your projects as tiles, notes in Writing and quick capture, in Komorebi glass.",
+      "author": "Basalt, after InlitX",
+      "file": "dashboards/komorebi-writing.md",
+      "snippet": "snippets/komorebi.css"
+    },
     {
       "id": "home",
       "name": "Home dashboard",

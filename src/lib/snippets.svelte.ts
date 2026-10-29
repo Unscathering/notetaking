@@ -5,6 +5,7 @@
 // their properties get that class on their editor, so a snippet can style just
 // those notes (like a dashboard). MODDING.md lists the classes and variables.
 import { ws } from "./workspace.svelte";
+import { KOMOREBI_CSS } from "./komorebi";
 
 export const SNIPPET_DIR = ".basalt/snippets";
 
@@ -62,6 +63,14 @@ export async function newSnippet(base = "my-snippet", css = STARTER) {
 	return name;
 }
 
+/** Adds one of the examples and turns it on, unless a snippet by that name is there already. */
+export async function useExample(name: string) {
+	await loadSnippets();
+	if (snippets.names.some((n) => n.replace(/(-\d+)?\.css$/, "") === name)) return;
+	const ex = EXAMPLES.find((e) => e.name === name);
+	if (ex) await newSnippet(name, ex.css);
+}
+
 export async function deleteSnippet(name: string) {
 	await ws.cave?.remove(`${SNIPPET_DIR}/${name}`);
 	delete snippets.texts[name];
@@ -81,6 +90,11 @@ const STARTER = `/* A CSS snippet. Changes show as you type.
 
 /** Ready-made snippets to start from (and to learn from). */
 export const EXAMPLES: Array<{ name: string; about: string; css: string }> = [
+	{
+		name: "komorebi",
+		about: "Frosted glass dashboard tiles with // labels, a clock header and tiles that breathe. For notes with cssclass: dashboard komorebi (add a color way: sakura, matcha, ember, glacier, mono).",
+		css: KOMOREBI_CSS,
+	},
 	{
 		name: "dashboard",
 		about: "For notes with cssclass: dashboard. Wide, no properties header, big titles, roomy cards.",

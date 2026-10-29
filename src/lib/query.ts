@@ -16,13 +16,30 @@
 //   show: list | cards | table | count
 //   columns: status, due                       (table columns)
 //   title: My projects                         (a heading above it)
+//
+// Widgets, for dashboards (list: …): header (title, text as a tagline, a clock,
+// a greeting and counts; image behind it), tiles (one `tile: Name | picture |
+// link | line under it` per tile), goal (text, big), actions (buttons for
+// commands), calendar (this month; days with a daily note marked), timer (the
+// focus timer, big), capture (a box that adds to the note in `to`), stats.
 import { agenda } from "./agenda";
 import { noteTitle } from "./cave";
 import { linksIn, tagsIn } from "./graph";
 import { readProps } from "./notes";
 
+export const WIDGETS = ["header", "tiles", "goal", "actions", "calendar", "timer", "capture", "stats"] as const;
+export type Widget = (typeof WIDGETS)[number];
+
+export interface Tile {
+	name: string;
+	image?: string;
+	/** A note or folder; the name if left out. */
+	link?: string;
+	about?: string;
+}
+
 export interface Spec {
-	list: "notes" | "tasks" | "tags" | "backlinks" | "habits";
+	list: "notes" | "tasks" | "tags" | "backlinks" | "habits" | Widget;
 	show: "list" | "cards" | "table" | "count";
 	from: string[];
 	tag: string;
@@ -37,12 +54,20 @@ export interface Spec {
 	days: number;
 	columns: string[];
 	title: string;
+	/** Widgets: a tagline or the goal's words. */
+	text: string;
+	/** Widgets: a picture (a path in the cave or a web address). */
+	image: string;
+	/** Tiles, in order. */
+	tiles: Tile[];
+	/** Actions: the commands' ids. */
+	actions: string[];
 	/** Lines it didn't understand, to point out. */
 	unknown: string[];
 }
 
 export function parseSpec(source: string): Spec {
-	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, days: 28, columns: [], title: "", unknown: [] };
+	const spec: Spec = { list: "notes", show: "list", from: [], tag: "", where: [], search: "", done: "false", due: "", to: "", sort: "", limit: 50, days: 28, columns: [], title: "", text: "", image: "", tiles: [], actions: [], unknown: [] };
 	for (const raw of source.split("\n")) {
 		const line = raw.replace(/\s+#.*$/, "").trim();
 		if (!line) continue;
@@ -55,7 +80,7 @@ export function parseSpec(source: string): Spec {
 		const v = value.trim();
 		switch (key.toLowerCase()) {
 			case "list":
-				if (["notes", "tasks", "tags", "backlinks", "habits"].includes(v)) spec.list = v as Spec["list"];
+				if (["notes", "tasks", "tags", "backlinks", "habits", ...WIDGETS].includes(v)) spec.list = v as Spec["list"];
 				else spec.unknown.push(line);
 				break;
 			case "show":
@@ -101,6 +126,21 @@ export function parseSpec(source: string): Spec {
 				break;
 			case "title":
 				spec.title = v;
+				break;
+			case "text":
+				spec.text = v;
+				break;
+			case "image":
+				spec.image = v;
+				break;
+			case "tile": {
+				const [name, image, link, about] = v.split("|").map((x) => x.trim());
+				if (name) spec.tiles.push({ name, image: image || undefined, link: link || undefined, about: about || undefined });
+				else spec.unknown.push(line);
+				break;
+			}
+			case "actions":
+				spec.actions = v.split(",").map((a) => a.trim()).filter(Boolean);
 				break;
 			default:
 				spec.unknown.push(line);
@@ -162,7 +202,8 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 export function runQuery(spec: Spec, texts: Map<string, string>, resolve: (t: string) => string | null, here: string): Row[] {
 	const notes = [...texts.keys()].filter((p) => p !== here && !p.startsWith("Templates/") && inFolders(p, spec.from));
 	let rows: Row[] = [];
-	if (spec.list === "habits") return rows; // Drawn as a tracker (editor/liveBlocks.ts).
+	// Drawn by themselves (editor/liveBlocks.ts, editor/widgets.ts).
+	if (spec.list === "habits" || (WIDGETS as readonly string[]).includes(spec.list)) return rows;
 	if (spec.list === "tags") {
 		const counts = new Map<string, number>();
 		for (const p of notes) for (const t of tagsIn(texts.get(p) ?? "")) counts.set(t, (counts.get(t) ?? 0) + 1);

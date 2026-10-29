@@ -77,7 +77,7 @@ sort: name
 
 | Key | Values |
 | --- | --- |
-| `list` | `notes` (the default), `tasks`, `tags`, `backlinks`, `habits` |
+| `list` | `notes` (the default), `tasks`, `tags`, `backlinks`, `habits`, or a widget (below) |
 | `show` | `list` (the default), `cards`, `table`, `count` |
 | `from` | Folders, separated by commas |
 | `tag` | Only notes with this tag |
@@ -91,6 +91,84 @@ sort: name
 | `columns` | Table columns: properties, or `folder`, `due`, `tags`, `note` |
 | `days` | Habits: how many days back (28 if left out) |
 | `title` | A heading above it |
+
+### Dashboard widgets
+
+`list:` can also be a widget. They're the parts of a dashboard that aren't
+lists of notes:
+
+| Widget | What it shows | Keys |
+| --- | --- | --- |
+| `header` | A big title, a tagline, a live clock and date, a greeting for the time of day, and counts of notes, open and done tasks | `title`, `text` (the tagline), `image` (a picture behind it) |
+| `tiles` | Picture tiles that open a folder (its dashboard, or the folder as a table) or a note | one `tile:` line per tile: `tile: Name \| picture \| link \| line under it` |
+| `goal` | A line of text, big: today's goal, what you're writing | `text` |
+| `actions` | Buttons for Basalt's commands | `actions: today, search, graph, new-note, template, palette` (also `calendar`, `ai`, `clip`, `backups`, `appearance`, `focus`) |
+| `calendar` | This month; days with a daily note are marked, and clicking a day opens its note | |
+| `timer` | The focus timer, big, with start, pause and stop | `text` (minutes, 25 if left out) |
+| `capture` | A box to jot a thought into; it's added to the end of a note | `to` (the note, `Inbox` if left out), `text` (the hint in the box) |
+| `stats` | The counts from the header on their own | |
+
+A tile's picture can be an emoji (`✍️`), one of Basalt's icon names
+(`lightbulb`), a picture in the cave (`attachments/owl.jpg`) or a web address.
+Everything after the name is optional: `tile: Writing` opens the Writing
+folder.
+
+### Columns
+
+A block can lay its parts out side by side. Start each column with a line
+`==`, and start the next part in the same column with `--`. `columns:` before
+the first `==` sets the widths (numbers are shares, like `1 3 1`; sizes like
+`220px` work too). Each part is a whole block of its own:
+
+````markdown
+```basalt
+columns: 220px 1fr 220px
+==
+title: today's goal
+list: goal
+text: do the work. trust the process.
+--
+title: system
+list: actions
+==
+title: collection
+list: tiles
+tile: Writing | ✍️
+tile: Life | 🌿
+==
+title: calendar
+list: calendar
+```
+````
+
+On a narrow window the columns stack.
+
+### Komorebi
+
+A ready look for dashboards: frosted glass tiles, `// LABELS` in a mono font,
+a clock header, tiles that breathe when you point at them. Add the
+**komorebi** snippet (Appearance → Snippets; it's added for you when you make
+a Komorebi dashboard) and give the note `cssclass: dashboard komorebi`, plus
+a color way if you like: `indigo` (the original), `sakura`, `matcha`,
+`ember`, `glacier` or `mono`, as in `cssclass: dashboard komorebi sakura`.
+Start from the **Komorebi dashboard** or **Writing dashboard** template. It
+looks best with a background picture and glass (Appearance → Background,
+Glass). Its colors are variables (`--k-surface`, `--k-border`, `--k-accent`,
+`--k-text`, `--k-muted`…), so a snippet of your own can make a new color way:
+
+```css
+.note-komorebi.note-lagoon {
+  --k-accent: #7fe0d0;
+  --k-accent-2: #4fb8b0;
+  --k-glow: 120, 220, 200;
+}
+```
+
+Widget classes for snippets: `.basalt-row`, `.basalt-column`, `.basalt-header`
+(`.has-image`), `.basalt-header-title`, `.basalt-tagline`, `.basalt-time`,
+`.basalt-greeting`, `.basalt-stat`, `.basalt-tile`, `.basalt-tile-art`,
+`.basalt-tile-name`, `.basalt-goal`, `.basalt-action`, `.basalt-cal-day`
+(`.is-today`, `.has-note`), `.basalt-timer-time`, `.basalt-capture-input`.
 
 Tasks are checklist items. They count as due on a day when they say
 `due:2026-11-02`, `📅 2026-11-02` or `@2026-11-02`; board cards with a due date
