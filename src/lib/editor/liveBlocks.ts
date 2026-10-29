@@ -14,7 +14,7 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 import { markdown } from "../ai/markdown";
 import { WIDGETS, type Row, type Spec } from "../query";
 import { streak, type HabitDay } from "../habits";
-import { widget, type WidgetHooks } from "./widgets";
+import { editInPlace, widget, type WidgetHooks } from "./widgets";
 
 export interface LiveHooks extends WidgetHooks {
 	/** Runs a ```basalt block. */
@@ -48,8 +48,40 @@ const openBlock = StateField.define<{ from: number; to: number } | null>({
 	},
 });
 
+/** Where a drawn block's text is: from its opening ``` line to its closing one. */
+function blockRange(view: EditorView, dom: HTMLElement) {
+	const doc = view.state.doc;
+	const start = doc.lineAt(view.posAtDOM(dom));
+	let end = start.number + 1;
+	while (end <= doc.lines && doc.line(end).text.trim() !== "```") end++;
+	return { start, end: Math.min(end, doc.lines) };
+}
+
+/**
+ * A title or text changed in place (widgets.ts `editInPlace`): rewrite its
+ * `key: value` line in the block, or add one if the block didn't have it.
+ */
+function setInPlace(view: EditorView, dom: HTMLElement, detail: { key: string; old: string; value: string }) {
+	if (view.state.readOnly) return;
+	const doc = view.state.doc;
+	const { start, end } = blockRange(view, dom);
+	const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = new RegExp(`^(\\s*${escape(detail.key)}\\s*:\\s*)${escape(detail.old)}\\s*$`, "i");
+	for (let n = start.number + 1; n < end; n++) {
+		const line = doc.line(n);
+		const m = match.exec(line.text);
+		if (!m) continue;
+		if (!detail.value) return view.dispatch({ changes: { from: line.from, to: Math.min(line.to + 1, doc.length) } });
+		return view.dispatch({ changes: { from: line.from + m[1].length, to: line.to, insert: detail.value } });
+	}
+	// Not there yet: add it, in a block that is one card (in columns there's no telling which card).
+	const rows = Array.from({ length: end - start.number - 1 }, (_, i) => doc.line(start.number + 1 + i).text);
+	if (detail.value && !rows.some((l) => /^\s*==\s*$/.test(l))) view.dispatch({ changes: { from: start.to, insert: `\n${detail.key}: ${detail.value}` } });
+}
+
 /** The </> button on a block: opens it as text, with the cursor in it. */
 function editButton(view: EditorView, dom: HTMLElement) {
+	dom.addEventListener("basalt-set", (e) => setInPlace(view, dom, (e as CustomEvent).detail));
 	if (view.state.readOnly) return;
 	const b = el("button", "basalt-edit");
 	b.title = "Edit this block";
@@ -62,10 +94,8 @@ function editButton(view: EditorView, dom: HTMLElement) {
 		e.preventDefault();
 		e.stopPropagation();
 		const doc = view.state.doc;
-		const start = doc.lineAt(view.posAtDOM(dom));
-		let end = start.number + 1;
-		while (end <= doc.lines && doc.line(end).text.trim() !== "```") end++;
-		const to = doc.line(Math.min(end, doc.lines)).to;
+		const { start, end } = blockRange(view, dom);
+		const to = doc.line(end).to;
 		view.dispatch({ effects: editBlock.of({ from: start.from, to }), selection: { anchor: Math.min(to, doc.line(Math.min(start.number + 1, doc.lines)).to) } });
 		view.focus();
 	});
@@ -124,7 +154,7 @@ class RowWidget extends WidgetType {
 		else row.style.gridTemplateColumns = `repeat(${columns.length}, minmax(0, 1fr))`;
 		for (const column of columns) {
 			const col = el("div", "basalt-column");
-			for (const card of column.split(/^\s*--\s*$/m)) if (card.trim()) col.append(new QueryWidget(card, this.stamp, this.hooks).draw(later));
+			for (const card of column.split(/^\s*--\s*$/m)) if (card.trim()) col.append(new QueryWidget(card, this.stamp, this.hooks, this.reading).draw(later));
 			row.append(col);
 		}
 		stops.set(row, later);
@@ -170,9 +200,13 @@ class QueryWidget extends WidgetType {
 	draw(later: Array<() => void>): HTMLElement {
 		const { spec, rows } = this.hooks.runBlock(this.source);
 		const box = el("div", `basalt-block basalt-show-${spec.show} basalt-list-${spec.list}`);
-		if (spec.title) box.append(el("div", "basalt-title", spec.title));
+		if (spec.title) {
+			const title = el("div", "basalt-title", spec.title);
+			editInPlace(title, "title", spec.title, { editable: !this.reading });
+			box.append(title);
+		}
 		if (spec.unknown.length) box.append(el("div", "basalt-warn", `Didn't understand: ${spec.unknown.join("; ")}`));
-		if ((WIDGETS as readonly string[]).includes(spec.list)) return widget(box, spec, this.hooks, later);
+		if ((WIDGETS as readonly string[]).includes(spec.list)) return widget(box, spec, { ...this.hooks, editable: !this.reading }, later);
 		if (spec.list === "habits") return this.tracker(box, spec);
 		if (spec.show === "count") {
 			box.append(el("div", "basalt-count", String(rows.length)), el("div", "basalt-count-label", spec.title ? "" : spec.list));
@@ -426,6 +460,10 @@ const look = EditorView.theme({
 	".basalt-header.has-image::before": { content: "''", position: "absolute", inset: "0", zIndex: "0", background: "linear-gradient(90deg, rgba(0,0,0,0.35), rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.3))" },
 	".basalt-header > :not(.basalt-header-image)": { position: "relative", zIndex: "1" },
 	".basalt-header.has-image": { color: "#fff", textShadow: "0 1px 8px rgba(0,0,0,0.6)" },
+	".basalt-editable": { outline: "none", cursor: "text", borderRadius: "4px", transition: "box-shadow var(--dur) var(--ease)" },
+	".basalt-editable:hover": { boxShadow: "0 0 0 1px color-mix(in srgb, currentColor 25%, transparent)" },
+	".basalt-editable:focus": { boxShadow: "0 0 0 1px var(--accent)" },
+	".basalt-tagline.is-empty:not(:focus)::after": { content: "attr(data-placeholder)", opacity: "0.5" },
 	".basalt-header-title": { color: "inherit", fontSize: "1.55em", fontWeight: "700", letterSpacing: "0.04em", lineHeight: "1.1" },
 	".basalt-header:not(.has-image) .basalt-header-title": { color: "var(--heading)" },
 	".basalt-tagline": { marginTop: "4px", color: "var(--muted)", fontSize: "0.82em" },

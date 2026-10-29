@@ -27,6 +27,47 @@ export interface WidgetHooks {
 	};
 	/** Adds a few lines to the end of a note, making it if needed. */
 	capture(note: string, text: string): Promise<void>;
+	/** The note can be edited: titles and texts can be changed in place. */
+	editable?: boolean;
+}
+
+/**
+ * Lets you change a piece of text right where it shows (a header's title, a
+ * goal), without opening the block's code. The change goes to the line
+ * `key: value` in the block (liveBlocks.ts listens for "basalt-set").
+ */
+export function editInPlace(e: HTMLElement, key: string, value: string, hooks: { editable?: boolean }) {
+	if (!hooks.editable) return;
+	e.contentEditable = "plaintext-only";
+	e.spellcheck = false;
+	e.classList.add("basalt-editable");
+	e.title = "Click to change";
+	let settled = true;
+	e.addEventListener("focus", () => (settled = false));
+	const done = (keep: boolean) => {
+		if (settled) return;
+		settled = true;
+		const next = (e.textContent ?? "").replace(/\s+/g, " ").trim();
+		if (keep && next !== value) e.dispatchEvent(new CustomEvent("basalt-set", { bubbles: true, detail: { key, old: value, value: next } }));
+		else e.textContent = value;
+	};
+	e.addEventListener("keydown", (ev) => {
+		ev.stopPropagation();
+		// Select all: just this text, not the whole note.
+		if (ev.key.toLowerCase() === "a" && (ev.ctrlKey || ev.metaKey)) {
+			ev.preventDefault();
+			getSelection()?.selectAllChildren(e);
+		} else if (ev.key === "Enter" || ev.key === "Escape") {
+			ev.preventDefault();
+			done(ev.key === "Enter");
+			e.blur();
+		}
+	});
+	e.addEventListener("blur", () => done(true));
+	e.addEventListener("paste", (ev) => {
+		ev.preventDefault();
+		document.execCommand("insertText", false, (ev.clipboardData?.getData("text/plain") ?? "").replace(/\s+/g, " "));
+	});
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string) => {
@@ -82,8 +123,15 @@ export function widget(box: HTMLElement, spec: Spec, hooks: WidgetHooks, later: 
 			// The title shows big in the header's own place, not as a small label.
 			box.querySelector(".basalt-title")?.remove();
 			const brand = el("div", "basalt-brand");
-			brand.append(el("div", "basalt-header-title", spec.title || "Home"));
-			if (spec.text) brand.append(el("div", "basalt-tagline", spec.text));
+			const title = el("div", "basalt-header-title", spec.title || "Home");
+			editInPlace(title, "title", spec.title || "Home", hooks);
+			brand.append(title);
+			if (spec.text || hooks.editable) {
+				const tagline = el("div", `basalt-tagline${spec.text ? "" : " is-empty"}`, spec.text);
+				tagline.dataset.placeholder = "Add a tagline";
+				editInPlace(tagline, "text", spec.text, hooks);
+				brand.append(tagline);
+			}
 			const clock = el("div", "basalt-clock");
 			const time = el("div", "basalt-time"), date = el("div", "basalt-date");
 			clock.append(time, date);
@@ -128,9 +176,12 @@ export function widget(box: HTMLElement, spec: Spec, hooks: WidgetHooks, later: 
 			box.append(grid);
 			return box;
 		}
-		case "goal":
-			box.append(el("div", "basalt-goal", spec.text || "What matters today?"));
+		case "goal": {
+			const goal = el("div", "basalt-goal", spec.text || "What matters today?");
+			editInPlace(goal, "text", spec.text, hooks);
+			box.append(goal);
 			return box;
+		}
 		case "actions": {
 			const ACTIONS: Record<string, [string, IconName]> = {
 				today: ["daily", "sun"],

@@ -14,12 +14,25 @@ export const snippets = $state({ names: [] as string[], texts: {} as Record<stri
 const on = () => ws.meta.snippets ?? [];
 
 /** Reads the snippets folder and applies the ones that are on. */
+/** Fingerprints of the Komorebi snippet as earlier versions wrote it (0.18.0). */
+const OLD_KOMOREBI = [0x7dfdb796];
+function hash(text: string) {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
+	return h;
+}
+
 export async function loadSnippets() {
 	const cave = ws.cave;
 	if (!cave) return;
 	const names = (await cave.listDir(SNIPPET_DIR)).filter((n) => n.endsWith(".css")).sort();
 	const texts: Record<string, string> = {};
 	for (const n of names) texts[n] = await cave.read(`${SNIPPET_DIR}/${n}`);
+	// The Komorebi snippet as an older Basalt made it, never edited: bring it up to date.
+	if (texts["komorebi.css"] && OLD_KOMOREBI.includes(hash(texts["komorebi.css"].trim()))) {
+		texts["komorebi.css"] = KOMOREBI_CSS;
+		await cave.write(`${SNIPPET_DIR}/komorebi.css`, KOMOREBI_CSS);
+	}
 	snippets.names = names;
 	snippets.texts = texts;
 	apply();

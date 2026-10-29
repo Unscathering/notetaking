@@ -80,7 +80,10 @@ export function titleBox(view: EditorView, hooks: TitleHooks): HTMLElement {
 	};
 	box.addEventListener("keydown", (e) => {
 		e.stopPropagation();
-		if (e.key === "Enter" || e.key === "ArrowDown" || e.key === "Tab") {
+		if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			getSelection()?.selectAllChildren(box);
+		} else if (e.key === "Enter" || e.key === "ArrowDown" || e.key === "Tab") {
 			e.preventDefault();
 			done(true);
 			toBody();

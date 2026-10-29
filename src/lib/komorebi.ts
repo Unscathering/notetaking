@@ -127,6 +127,25 @@ export const KOMOREBI_CSS = `/* Komorebi: frosted glass dashboard tiles.
 }
 .note-komorebi .basalt-title::before { content: "//"; color: var(--k-muted); opacity: 0.7; }
 
+/* Plain Markdown headings get the same look: # like the header, ## and ### like the labels. */
+.note-komorebi .basalt-inline-title { display: none; }
+.note-komorebi .cm-line.cm-h1 { font-family: var(--k-font); color: var(--k-accent); font-size: 1.55rem; letter-spacing: 0.08em; }
+.note-komorebi .cm-line.cm-h1::before { content: "> "; color: var(--k-muted); }
+.note-komorebi .cm-line.cm-h2,
+.note-komorebi .cm-line.cm-h3 {
+  padding-top: 18px;
+  color: var(--k-accent);
+  font-family: var(--k-font);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.note-komorebi .cm-line.cm-h2::before,
+.note-komorebi .cm-line.cm-h3::before { content: "// "; color: var(--k-muted); opacity: 0.7; }
+.note-komorebi .cm-line.cm-h2 *,
+.note-komorebi .cm-line.cm-h3 * { color: inherit; }
+
 /* Header */
 .note-komorebi .basalt-header { padding: 22px 26px; }
 .note-komorebi .basalt-header:hover { transform: scale(0.996); }
