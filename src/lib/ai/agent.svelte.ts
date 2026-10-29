@@ -75,6 +75,8 @@ export interface ChatMessage {
 	text: string;
 	/** Small copies of the pictures sent with it, to show. */
 	images?: string[];
+	/** Notes sent along with it (the open note, @mentions). */
+	notes?: string[];
 	steps: Step[];
 	plan?: Plan;
 	error?: string;
@@ -478,13 +480,14 @@ export async function sortRequest(text: string, last = chat.messages.filter((m) 
 	return [...new Set([...byWords, ...byAi, ...followUp])];
 }
 
-export async function send(text: string, pictures: Array<{ full: string; thumb: string }> = []) {
+export async function send(text: string, pictures: Array<{ full: string; thumb: string }> = [], notes: string[] = []) {
 	if (chat.busy || (!text.trim() && !pictures.length)) return;
 	chat.busy = true;
 	sameCave();
 	const memory = chat.memoryLoaded ? chat.memory : await loadMemory();
 	if (chat.project && !chat.projectMemory) await loadProjectMemory();
-	chat.messages.push({ id: nextId++, role: "user", text, steps: [], ...(pictures.length ? { images: pictures.map((p) => p.thumb) } : {}) });
+	notes = [...new Set(notes)].filter((p) => ws.texts.has(p));
+	chat.messages.push({ id: nextId++, role: "user", text, steps: [], ...(pictures.length ? { images: pictures.map((p) => p.thumb) } : {}), ...(notes.length ? { notes } : {}) });
 	turnStart = history.length;
 	history.push({ role: "user", content: text || "(Look at this picture.)", ...(pictures.length ? { images: pictures.map((p) => p.full) } : {}) });
 	chat.messages.push({ id: nextId++, role: "assistant", text: "", steps: [], streaming: true });
@@ -511,6 +514,13 @@ export async function send(text: string, pictures: Array<{ full: string; thumb: 
 	let memoryStep: Step | undefined;
 	// The notes that best match the message, handed to the AI up front.
 	const found = recall(ws.texts, text, noteTitle, 3, chat.project);
+	// Notes sent along with the message (the open note's chip, @mentions) go first, whole (up to a point).
+	for (const p of [...notes].reverse()) {
+		const at = found.findIndex((f) => f.path === p);
+		if (at >= 0) found.splice(at, 1);
+		found.unshift({ path: p, score: Infinity, excerpt: (ws.texts.get(p) ?? "").slice(0, 4000) });
+	}
+	if (found.length > 3 + notes.length) found.length = 3 + notes.length;
 	if (found.length) step({ icon: "search", label: `Found ${found.length} ${found.length === 1 ? "note" : "notes"} that may help`, detail: found.map((f) => `• ${noteTitle(f.path)}`).join("\n") });
 	const read = new Set<string>();
 	/** While the AI writes a long change (a note's whole text), a line saying what and how far along. */

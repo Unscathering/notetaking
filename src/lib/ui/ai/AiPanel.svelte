@@ -5,6 +5,7 @@
 	import { cubicOut } from "svelte/easing";
 	import { addModelFile, ai, canSee, installEngine, refresh, stopAnswer } from "../../ai/engine.svelte";
 	import { SvelteSet } from "svelte/reactivity";
+	import { untrack } from "svelte";
 	import { THINKING, chat, deleteChat, loadChats, loadMemory, newChat, openChat, renameChat, saveMemory, send, setAccess, setProject, updateMemory, type ChatInfo } from "../../ai/agent.svelte";
 	import { aiPanel } from "../../ai/panel.svelte";
 	import { speedTest, warmUp, type SpeedResult } from "../../ai/writer";
@@ -16,7 +17,10 @@
 	import ModelPicker from "./ModelPicker.svelte";
 	import ClaudeSettings from "./ClaudeSettings.svelte";
 	import MicButton from "../MicButton.svelte";
-	import { claudeName, usingClaude } from "../../ai/claude.svelte";
+	import { claudeName, cloud, saveCloud, usingClaude } from "../../ai/claude.svelte";
+	import { useModel } from "../../ai/engine.svelte";
+	import { showMenu, type MenuItem } from "../ContextMenu.svelte";
+	import { noteTitle } from "../../cave";
 	import PlanCard from "./PlanCard.svelte";
 	import Privacy from "./Privacy.svelte";
 	import Progress from "./Progress.svelte";
@@ -108,6 +112,11 @@
 	const modelName = $derived(online ? claudeName() : (MODELS.find((m) => m.file === ai.model)?.name ?? (ai.model ? ai.model.replace(/\.gguf$/, "") : "No model")));
 	const status = $derived(chat.busy ? "Thinking…" : online ? "Online" : ai.starting ? "Waking up…" : ai.running ? "Ready" : "Sleeping");
 
+	const greeting = $derived.by(() => {
+		const h = new Date().getHours();
+		return h < 5 ? "Up late?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+	});
+
 	const SUGGESTIONS = [
 		{ text: "Set up my cave for me", ico: "sparkles" },
 		{ text: "Summarize the note I have open", ico: "file" },
@@ -159,17 +168,112 @@
 		void addPictures(files);
 	}
 
+	// ---- Chat tabs: the chats you had open lately, numbered, like Claudian's ----
+	let chatTabs = $state<string[]>([]);
+	$effect(() => {
+		const id = chat.id;
+		const saved = new Set(chat.list.map((c) => c.id));
+		// A new chat that was never used doesn't keep its tab once you move on.
+		const keep = untrack(() => chatTabs).filter((t) => t === id || saved.has(t));
+		chatTabs = (keep.includes(id) ? keep : [...keep, id]).slice(-5);
+	});
+	const tabTitle = (id: string) => chat.list.find((c) => c.id === id)?.title ?? "New chat";
+	async function closeChatTab(id: string) {
+		if (chat.busy) return;
+		const i = chatTabs.indexOf(id);
+		chatTabs = chatTabs.filter((t) => t !== id);
+		if (id !== chat.id) return;
+		const next = chatTabs[Math.max(0, i - 1)];
+		if (next) await openChat(next);
+		else await newChat();
+	}
+
+	// ---- Notes that go with the message: the open note (a chip you can take off) and @mentions ----
+	let useOpen = $state(true);
+	let attached = $state<string[]>([]);
+	$effect(() => {
+		void ws.note;
+		useOpen = true;
+	});
+	const openNote = $derived(ws.note && useOpen && !attached.includes(ws.note) ? ws.note : null);
+
+	/** The note names matching what's typed after @, and which one is picked. */
+	let mention = $state<{ query: string; at: number } | null>(null);
+	let mentionIndex = $state(0);
+	const mentions = $derived.by(() => {
+		if (!mention) return [];
+		const q = mention.query.toLowerCase();
+		return ws.notes.filter((p) => noteTitle(p).toLowerCase().includes(q) && !attached.includes(p)).slice(0, 6);
+	});
+	function findMention() {
+		if (!input) return;
+		const before = draft.slice(0, input.selectionStart ?? draft.length);
+		const m = /(^|\s)@([^\s@]{0,40})$/.exec(before);
+		mention = m ? { query: m[2], at: before.length - m[2].length - 1 } : null;
+		mentionIndex = 0;
+	}
+	function pickMention(path: string) {
+		if (!mention || !input) return;
+		const end = mention.at + 1 + mention.query.length;
+		draft = draft.slice(0, mention.at) + draft.slice(end);
+		attached = [...attached, path];
+		mention = null;
+		requestAnimationFrame(() => {
+			input?.focus();
+			grow();
+		});
+	}
+
+	/** The model menu in the box: the models on this PC, Claude, and the settings. */
+	function modelMenu(e: MouseEvent) {
+		const items: MenuItem[] = ai.models.map((m) => ({
+			label: `${MODELS.find((x) => x.file === m.file)?.name ?? m.file.replace(/\.gguf$/, "")}${!online && m.file === ai.model ? "  ✓" : ""}`,
+			icon: "cpu",
+			run: async () => {
+				if (cloud.on) {
+					cloud.on = false;
+					saveCloud();
+				}
+				if (m.file !== ai.model) await useModel(m.file);
+			},
+		}));
+		if (cloud.key.trim()) items.push({ label: `${claudeName()} (online)${online ? "  ✓" : ""}`, icon: "globe", run: () => { cloud.on = true; saveCloud(); } });
+		items.push({ label: "-" }, { label: "AI models…", icon: "settings", run: () => (aiPanel.view = "models") });
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		showMenu(new MouseEvent("contextmenu", { clientX: r.left, clientY: r.top - 8 - items.length * 30 }), items);
+	}
+
 	async function submit(text = draft) {
 		if ((!text.trim() && !pictures.length) || chat.busy || blocked) return;
 		const sending = pictures;
+		const notes = [...(openNote ? [openNote] : []), ...attached];
 		draft = "";
 		pictures = [];
+		attached = [];
+		mention = null;
 		requestAnimationFrame(grow);
-		await send(text.trim(), sending);
+		await send(text.trim(), sending, notes);
 	}
 
 	function keys(e: KeyboardEvent) {
 		e.stopPropagation();
+		if (mention && mentions.length) {
+			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+				e.preventDefault();
+				mentionIndex = (mentionIndex + (e.key === "ArrowDown" ? 1 : mentions.length - 1)) % mentions.length;
+				return;
+			}
+			if (e.key === "Enter" || e.key === "Tab") {
+				e.preventDefault();
+				pickMention(mentions[mentionIndex]);
+				return;
+			}
+			if (e.key === "Escape") {
+				e.preventDefault();
+				mention = null;
+				return;
+			}
+		}
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			void submit();
@@ -194,18 +298,21 @@
 		{#if aiPanel.view !== "chat"}
 			<button class="icon" onclick={() => (aiPanel.view = "chat")} title="Back">{@html icon("back", 16)}</button>
 			<span class="title"><b>{aiPanel.view === "memory" ? "Memory" : aiPanel.view === "chats" ? "Chats" : "AI models"}</b></span>
+		{:else if ready}
+			<span class="orb">{@html icon("sparkles", 15)}</span>
+			<div class="chat-tabs" role="tablist" aria-label="Open chats">
+				{#each chatTabs as id, i (id)}
+					<button role="tab" aria-selected={id === chat.id} class="ctab" class:on={id === chat.id} disabled={chat.busy && id !== chat.id} title={`${tabTitle(id)} · middle-click to close`} onclick={() => openChat(id)} onauxclick={(e) => e.button === 1 && closeChatTab(id)}>{i + 1}</button>
+				{/each}
+				<button class="ctab add" onclick={() => newChat()} title="New chat" disabled={chat.busy || !chat.messages.length}>{@html icon("plus", 13)}</button>
+			</div>
+			<span class="title"></span>
+			<button class="icon" onclick={() => (aiPanel.view = "chats")} title="Your chats and projects">{@html icon("clock", 16)}</button>
+			<button class="icon" onclick={openMemory} title="Memory: what your AI remembers about you">{@html icon("brain", 16)}</button>
+			<button class="icon" onclick={() => (aiPanel.view = "models")} title="AI models">{@html icon("settings", 16)}</button>
 		{:else}
 			<span class="orb">{@html icon("sparkles", 15)}</span>
-			<span class="title">
-				<b>Basalt AI</b>
-				{#if ready}<small><i class="dot" class:on={ai.running || online} class:busy={ai.starting || chat.busy}></i>{modelName} · {status}</small>{:else}<small>Private, on your PC</small>{/if}
-			</span>
-			{#if ready}
-				<button class="icon" onclick={() => (aiPanel.view = "chats")} title="Your chats and projects">{@html icon("clock", 16)}</button>
-				<button class="icon" onclick={openMemory} title="Memory: what your AI remembers about you">{@html icon("brain", 16)}</button>
-				<button class="icon" onclick={() => newChat()} title="New chat" disabled={chat.busy || !chat.messages.length}>{@html icon("plus", 16)}</button>
-				<button class="icon" onclick={() => (aiPanel.view = "models")} title="AI models">{@html icon("settings", 16)}</button>
-			{/if}
+			<span class="title"><b>Basalt AI</b><small>Private, on your PC</small></span>
 		{/if}
 		<button class="icon" onclick={() => (aiPanel.open = false)} title="Close (Ctrl+J)">{@html icon("x", 16)}</button>
 	</header>
@@ -320,8 +427,9 @@
 			{#if !chat.messages.length}
 				<div class="empty" in:fade={{ duration: ms }}>
 					<span class="big-orb">{@html icon("sparkles", 24)}</span>
-					<h2>What can I help with?</h2>
-					<p>I can read your notes, write with you, and set up or tidy your cave. I'll always show you a plan before changing anything.</p>
+					<h2>{greeting}</h2>
+					<h3 class="ask">What can I help with?</h3>
+					<p>I can read your notes, write with you, and set up or tidy your cave. {chat.access === "full" ? "With full access I make changes right away, and you can undo any of them." : "I'll show you a plan before changing anything."} Type @ to hand me a note.</p>
 					{#if online}<div class="private">{@html icon("globe", 12)} Online: {modelName}, through Anthropic</div>{:else}<div class="private">{@html icon("lock", 12)} Private: I run only on this PC</div>{/if}
 					<div class="suggestions">
 						{#each SUGGESTIONS as s (s.text)}
@@ -334,6 +442,7 @@
 				<div class="msg {m.role}" in:fly={{ y: 8, duration: ms, easing: cubicOut }}>
 					{#if m.role === "user"}
 						<div class="said">
+							{#if m.notes?.length}<div class="sent-notes">{#each m.notes as n (n)}<button class="chip" onclick={() => ws.open(n)}>{@html icon("file", 11)}{noteTitle(n)}</button>{/each}</div>{/if}
 							{#if m.images?.length}<div class="pics sent">{#each m.images as src, i (i)}<img {src} alt="" />{/each}</div>{/if}
 							{#if m.text}<div class="bubble">{m.text}</div>{/if}
 						</div>
@@ -379,19 +488,6 @@
 		</div>
 
 		<div class="composer">
-			<div class="above">
-			<div class="access" role="radiogroup" aria-label="What the AI may do">
-				<button role="radio" aria-checked={chat.access === "plan"} class:on={chat.access === "plan"} disabled={chat.busy} onclick={() => setAccess("plan")} title="Plan first: the AI shows its changes as a plan, and nothing happens until you press Do it">{@html icon("list", 11)} Plan first</button>
-				<button role="radio" aria-checked={chat.access === "full"} class:on={chat.access === "full"} disabled={chat.busy} onclick={() => setAccess("full")} title="Full access: the AI makes its changes as soon as it's done answering (and asks when it's unsure). Everything can still be undone.">{@html icon("zap", 11)} Full access</button>
-			</div>
-			<label class="project" title="Put this chat in a project: a folder whose chats share what they learn">
-				{@html icon("folder", 12)}
-				<select value={chat.project} onchange={(e) => setProject((e.target as HTMLSelectElement).value)} disabled={chat.busy}>
-					<option value="">No project</option>
-					{#each ws.folders as f (f)}<option value={f}>{f}</option>{/each}
-				</select>
-			</label>
-			</div>
 			{#if pictures.length}
 				<div class="pics waiting">
 					{#each pictures as p, i (i)}
@@ -401,15 +497,44 @@
 				{#if blocked}<p class="blocked">{@html icon("alert", 11)} {modelName} can't see pictures. Use Sharp with its picture reader (AI models), or Claude.</p>{/if}
 			{/if}
 			<div class="box" role="group" ondragover={(e) => e.preventDefault()} ondrop={(e) => { if (e.dataTransfer?.files.length) { e.preventDefault(); void addPictures(e.dataTransfer.files); } }}>
-				<button class="attach" title="Add a picture (or paste or drop one)" onclick={() => pictureFile?.click()}>{@html icon("image", 15)}</button>
-				<input bind:this={pictureFile} type="file" accept="image/*" multiple hidden onchange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void addPictures(f); (e.target as HTMLInputElement).value = ""; }} />
-				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, or tell me what to do…" oninput={grow} onkeydown={keys} onpaste={pastePictures}></textarea>
-				<MicButton {ms} onText={(t) => { draft = draft ? `${draft.trimEnd()} ${t}` : t; requestAnimationFrame(grow); input?.focus(); }} />
-				{#if chat.busy}
-					<button class="send stop" onclick={stopAnswer} title="Stop">{@html icon("stop", 14)}</button>
-				{:else}
-					<button class="send" disabled={(!draft.trim() && !pictures.length) || blocked} onclick={() => submit()} title="Send (Enter)">{@html icon("send", 16)}</button>
+				{#if mention && mentions.length}
+					<div class="mentions" role="listbox" transition:fade={{ duration: ms }}>
+						{#each mentions as p, i (p)}
+							<button role="option" aria-selected={i === mentionIndex} class:on={i === mentionIndex} onmousedown={(e) => { e.preventDefault(); pickMention(p); }}>{@html icon("file", 12)}<span>{noteTitle(p)}</span><small>{p.split("/").slice(0, -1).join("/")}</small></button>
+						{/each}
+					</div>
 				{/if}
+				{#if openNote || attached.length}
+					<div class="chips">
+						{#if openNote}<span class="chip" title="The note you have open goes with your message">{@html icon("file", 11)}{noteTitle(openNote)}<button title="Don't send this note" onclick={() => (useOpen = false)}>{@html icon("x", 10)}</button></span>{/if}
+						{#each attached as p (p)}<span class="chip">{@html icon("file", 11)}{noteTitle(p)}<button title="Take it off" onclick={() => (attached = attached.filter((x) => x !== p))}>{@html icon("x", 10)}</button></span>{/each}
+					</div>
+				{/if}
+				<textarea bind:this={input} bind:value={draft} rows="1" placeholder="Ask anything, @ to add a note…" oninput={() => { grow(); findMention(); }} onclick={findMention} onkeydown={keys} onpaste={pastePictures}></textarea>
+				<input bind:this={pictureFile} type="file" accept="image/*" multiple hidden onchange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) void addPictures(f); (e.target as HTMLInputElement).value = ""; }} />
+				<div class="tools">
+					<button class="pill model" onclick={modelMenu} title="Change the model">
+						<i class="dot" class:on={ai.running || online} class:busy={ai.starting || chat.busy}></i><span>{modelName}</span>{@html icon("down", 11)}
+					</button>
+					<button class="pill" class:full={chat.access === "full"} disabled={chat.busy} onclick={() => setAccess(chat.access === "plan" ? "full" : "plan")} title={chat.access === "plan" ? "Plan first: the AI shows its changes as a plan, and nothing happens until you press Do it. Click for full access." : "Full access: the AI makes its changes as soon as it's done answering (and asks when it's unsure). Everything can still be undone. Click for plan first."}>
+						{@html icon(chat.access === "plan" ? "list" : "zap", 11)}<span>{chat.access === "plan" ? "Plan first" : "Full access"}</span>
+					</button>
+					<label class="pill project" class:set={!!chat.project} title={chat.project ? `Project: ${chat.project}. Its chats share what they learn.` : "Put this chat in a project: a folder whose chats share what they learn"}>
+						{@html icon("folder", 11)}{#if chat.project}<span>{chat.project.split("/").pop()}</span>{/if}
+						<select value={chat.project} onchange={(e) => setProject((e.target as HTMLSelectElement).value)} disabled={chat.busy}>
+							<option value="">No project</option>
+							{#each ws.folders as f (f)}<option value={f}>{f}</option>{/each}
+						</select>
+					</label>
+					<span class="grow"></span>
+					<button class="attach" title="Add a picture (or paste or drop one)" onclick={() => pictureFile?.click()}>{@html icon("image", 15)}</button>
+					<MicButton {ms} onText={(t) => { draft = draft ? `${draft.trimEnd()} ${t}` : t; requestAnimationFrame(grow); input?.focus(); }} />
+					{#if chat.busy}
+						<button class="send stop" onclick={stopAnswer} title="Stop">{@html icon("stop", 14)}</button>
+					{:else}
+						<button class="send" disabled={(!draft.trim() && !pictures.length) || blocked} onclick={() => submit()} title="Send (Enter)">{@html icon("send", 16)}</button>
+					{/if}
+				</div>
 			</div>
 			{#if online}<p class="foot">{@html icon("globe", 10)} Using Claude: messages and the notes it reads go to Anthropic.</p>{:else}<p class="foot">{@html icon("lock", 10)} Runs on this PC. Nothing leaves it.</p>{/if}
 		</div>
@@ -1002,12 +1127,13 @@
 		padding: 10px 12px 8px;
 	}
 	.box {
+		position: relative;
 		display: flex;
-		align-items: flex-end;
-		gap: 6px;
-		padding: 6px 6px 6px 12px;
+		flex-direction: column;
+		gap: 4px;
+		padding: 8px 8px 6px 12px;
 		border: 1px solid var(--border);
-		border-radius: 18px;
+		border-radius: 14px;
 		background: color-mix(in srgb, var(--bg) 70%, transparent);
 		transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 	}
@@ -1027,6 +1153,187 @@
 		font: inherit;
 		font-size: 13.5px;
 		line-height: 1.45;
+	}
+	.tools {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		min-width: 0;
+	}
+	.grow {
+		flex: 1;
+	}
+	.pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		max-width: 150px;
+		height: 26px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 11.5px;
+		white-space: nowrap;
+		cursor: pointer;
+		transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+	}
+	.pill span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.pill:hover:not(:disabled) {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.pill.full {
+		color: var(--accent);
+	}
+	.pill {
+		flex: none;
+	}
+	.pill.model {
+		flex: 0 1 auto;
+	}
+	.pill.project {
+		position: relative;
+		margin: 0;
+	}
+	.pill.project.set {
+		color: var(--accent);
+	}
+	/* The folder list opens from the pill; the pill shows the project's name. */
+	.pill.project select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		max-width: none;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.chips,
+	.sent-notes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+	}
+	.sent-notes {
+		justify-content: flex-end;
+		margin-bottom: 4px;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 100%;
+		padding: 2px 4px 2px 8px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--raised);
+		color: var(--text);
+		font: inherit;
+		font-size: 11.5px;
+	}
+	button.chip {
+		padding-right: 8px;
+		cursor: pointer;
+	}
+	.chip button {
+		display: grid;
+		place-items: center;
+		width: 16px;
+		height: 16px;
+		padding: 0;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.chip button:hover {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.mentions {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: calc(100% + 6px);
+		z-index: 5;
+		display: flex;
+		flex-direction: column;
+		padding: 4px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--surface-float, var(--panel));
+		backdrop-filter: blur(14px);
+		box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+	}
+	.mentions button {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		border: 0;
+		border-radius: calc(var(--radius) * 0.7);
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-size: 12.5px;
+		text-align: left;
+		cursor: pointer;
+	}
+	.mentions button.on {
+		background: var(--accent-soft);
+	}
+	.mentions small {
+		margin-left: auto;
+		color: var(--muted);
+		font-size: 11px;
+	}
+	.chat-tabs {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: 4px;
+	}
+	.ctab {
+		display: grid;
+		place-items: center;
+		min-width: 24px;
+		height: 24px;
+		padding: 0 6px;
+		border: 0;
+		border-radius: 7px;
+		background: transparent;
+		color: var(--muted);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.ctab:hover:not(:disabled) {
+		background: var(--hover);
+		color: var(--text);
+	}
+	.ctab.on {
+		background: var(--accent-soft);
+		color: var(--accent);
+	}
+	.ctab:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	h3.ask {
+		display: block;
+		text-align: center;
+		margin: 0 0 8px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--muted);
 	}
 	.send {
 		display: grid;
@@ -1150,44 +1457,6 @@
 	}
 	.mini:hover {
 		color: var(--text);
-	}
-	.above {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px 10px;
-		margin: 0 0 6px 4px;
-	}
-	.above .project {
-		margin: 0;
-	}
-	.access {
-		display: inline-flex;
-		padding: 2px;
-		border: 1px solid var(--border);
-		border-radius: 999px;
-	}
-	.access button {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 2px 8px;
-		border: 0;
-		border-radius: 999px;
-		background: transparent;
-		color: var(--muted);
-		font: inherit;
-		font-size: 11px;
-		cursor: pointer;
-		transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-	}
-	.access button.on {
-		background: var(--accent-soft);
-		color: var(--accent);
-		font-weight: 600;
-	}
-	.access button:disabled {
-		cursor: default;
 	}
 	.project {
 		display: inline-flex;
