@@ -22,7 +22,10 @@
 		{#each plan.changes as c (c.id)}
 			<li class:off={!c.checked} class:bad={!!c.problem}>
 				<label>
-					<input type="checkbox" bind:checked={c.checked} disabled={plan.status !== "waiting"} />
+					{#if c.state === "doing"}<span class="state"><span class="spin"></span></span>
+					{:else if c.state === "done"}<span class="state ok">{@html icon("check", 14)}</span>
+					{:else if c.state === "failed"}<span class="state bad">{@html icon("alert", 14)}</span>
+					{:else}<input type="checkbox" bind:checked={c.checked} disabled={plan.status !== "waiting"} />{/if}
 					<span class="c-ico">{@html icon(c.icon, 13)}</span>
 					<span class="what">{c.summary}{#if c.problem}<small>{c.problem}</small>{/if}</span>
 				</label>
@@ -34,7 +37,7 @@
 			<button class="go" disabled={!count} onclick={() => approve(m)}>{@html icon("check", 13)} Do it{count < plan.changes.length ? ` (${count})` : ""}</button>
 			<button class="ghost" onclick={() => skip(m)}>Not now</button>
 		{:else if plan.status === "doing"}
-			<span class="note">Working on it…</span>
+			<span class="note"><span class="spin"></span> Working on it… {plan.changes.filter((c) => c.state === "done" || c.state === "failed").length} of {count}</span>
 		{:else if plan.status === "done"}
 			<span class="note ok">{@html icon("check", 13)} {plan.note}</span>
 			{#if !plan.reopened}<button class="ghost" disabled={undoing} onclick={async () => { undoing = true; await undo(m); undoing = false; }}>{@html icon("undo", 13)} Undo</button>{/if}
@@ -112,6 +115,33 @@
 		display: inline-flex;
 		margin-top: 1px;
 		color: var(--muted);
+	}
+	.state {
+		display: inline-flex;
+		flex: none;
+		justify-content: center;
+		width: 13px;
+		margin-top: 2px;
+	}
+	.state.ok {
+		color: #5fb878;
+	}
+	.state.bad {
+		color: #e05d5d;
+	}
+	.spin {
+		display: inline-block;
+		width: 11px;
+		height: 11px;
+		border: 1.5px solid var(--border);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	.what small {
 		display: block;

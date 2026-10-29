@@ -77,6 +77,9 @@ export interface ChatMessage {
 	streaming?: boolean;
 	/** Notes the answer came from, to open with a click. */
 	sources?: string[];
+	/** Waiting on the AI (nothing coming in yet), and what it's doing, if known. */
+	thinking?: boolean;
+	stage?: string;
 }
 
 let nextId = 1;
@@ -382,8 +385,9 @@ export async function send(text: string) {
 		reply.steps.push(s);
 		return reply.steps[reply.steps.length - 1];
 	};
-	/** One line that grows as changes are planned, instead of one line each. */
-	let planStep: Step | undefined;
+	/** The first few planned changes get a line each; the rest share one line. */
+	const SHOWN = 6;
+	let moreStep: Step | undefined;
 	let fixStep: Step | undefined;
 	let memoryStep: Step | undefined;
 	// The notes that best match the message, handed to the AI up front.
@@ -394,18 +398,20 @@ export async function send(text: string) {
 	let writeStep: Step | undefined;
 	let lastShown = 0;
 	const writing = (call: { name: string; args: string }) => {
-		if (!WRITES.has(call.name) || call.args.length < 200 || Date.now() - lastShown < 400) return;
+		if (!WRITES.has(call.name) || Date.now() - lastShown < 250) return;
 		lastShown = Date.now();
-		const target = /"(?:path|name|title|board)"\s*:\s*"([^"]+)"/.exec(call.args)?.[1] ?? "a change";
+		say(reply, { thinking: false });
+		const target = /"(?:path|name|title|board)"\s*:\s*"([^"]+)/.exec(call.args)?.[1]?.split("/").pop();
 		const words = Math.round(call.args.length / 6);
-		writeStep ??= step({ icon: "pencil", label: "", active: true });
-		writeStep.label = `Writing “${target.split("/").pop()}”… about ${words} words so far`;
+		writeStep ??= step({ icon: describe(call.name, {}).icon, label: "", active: true });
+		writeStep.label = `${doing(call.name, target)}…${words > 40 ? ` about ${words} words so far` : ""}`;
 		writeStep.active = true;
 	};
 	try {
 		for (let round = 0; round < MAX_ROUNDS; round++) {
 			let content = "";
 			let raw: unknown[] | undefined;
+			say(reply, { thinking: true, stage: round === 0 ? "" : plan.length ? "Deciding what else to do" : "Thinking about what it found" });
 			const calls: Array<{ id: string; name: string; args: string }> = [];
 			// dry_multiplier: the engine's guard against saying the same thing over and over.
 			const ask = (budget: number) =>
@@ -414,6 +420,7 @@ export async function send(text: string) {
 				const delta = (d.choices as Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }> | undefined)?.[0]?.delta;
 				if (!delta) return;
 				if (delta.content) {
+					if (reply.thinking) say(reply, { thinking: false });
 					content += delta.content;
 					say(reply, { text: reply.text + delta.content });
 				}
@@ -485,9 +492,12 @@ export async function send(text: string) {
 					} else {
 						const change: Change = { id: changeId++, tool: call.name, args, checked: true, ...describe(call.name, args) };
 						plan.push(change);
-						planStep ??= step({ icon: "layers", label: "", active: true });
-						planStep.label = `Planning changes (${plan.length})`;
-						planStep.detail = plan.map((c) => `• ${c.summary}`).join("\n");
+						if (plan.length <= SHOWN) step({ icon: change.icon, label: `Planned: ${change.summary.split(": ")[0]}`, detail: change.summary.includes(": ") ? change.summary : undefined });
+						else {
+							moreStep ??= step({ icon: "layers", label: "" });
+							moreStep.label = `…and ${plan.length - SHOWN} more ${plan.length - SHOWN === 1 ? "change" : "changes"}`;
+							moreStep.detail = plan.slice(SHOWN).map((c) => `• ${c.summary}`).join("\n");
+						}
 						result = "Added to the plan. The user approves the whole plan with one click after your reply; don't ask them to confirm and don't say it's done.";
 					}
 				} else {
@@ -512,16 +522,52 @@ export async function send(text: string) {
 		say(reply, { error: tooLong(message) ? "This chat got too long for the AI to keep in mind. Start a new chat (the + button above) and ask again." : plan.length ? `${message} What it planned before stopping is below.` : message });
 	} finally {
 		// Even if the answer was cut off, what was planned so far is kept.
-		if (planStep) Object.assign(planStep, { label: `Planned ${plan.length} ${plan.length === 1 ? "change" : "changes"}`, active: false });
 		if (plan.length) say(reply, { plan: { changes: plan, status: "waiting", undo: [] } });
 		if (!reply.text.trim() && !reply.error) say(reply, { text: plan.length ? "Here's what I'd like to do:" : "…" });
 		if (writeStep) reply.steps.splice(reply.steps.indexOf(writeStep), 1);
 		for (const s of reply.steps) s.active = false;
 		void saveChat().catch(() => {});
-		say(reply, { streaming: false });
+		say(reply, { streaming: false, thinking: false });
 		chat.busy = false;
 	}
 	if (++sinceMemory >= 4) void updateMemory();
+}
+
+/** What the AI is busy making, in a few words. */
+function doing(tool: string, target?: string): string {
+	const t = target ? ` “${target}”` : "";
+	switch (tool) {
+		case "create_space":
+			return `Making the area${t}`;
+		case "create_home":
+			return `Making the home page${t}`;
+		case "create_folder":
+			return `Making the folder${t}`;
+		case "create_note":
+			return `Writing${t || " a note"}`;
+		case "create_board":
+			return `Making the board${t}`;
+		case "edit_note":
+		case "append_to_note":
+			return `Editing${t || " a note"}`;
+		case "add_card":
+			return `Adding a card${t ? ` to${t}` : ""}`;
+		case "move_item":
+			return `Moving${t || " something"}`;
+		case "rename_item":
+			return `Renaming${t || " something"}`;
+		case "delete_item":
+			return `Deleting${t || " something"}`;
+		case "clear_cave":
+			return "Clearing the cave";
+		case "set_look":
+			return `Picking a look for${t || " it"}`;
+		case "set_home":
+			return `Choosing the home page${t}`;
+		case "change_appearance":
+			return "Changing the look";
+	}
+	return "Planning a change";
 }
 
 function stepLabel(tool: string, a: Record<string, unknown>, now: boolean): string {
@@ -555,11 +601,14 @@ export async function approve(m: ChatMessage) {
 	const order = [...plan.changes].sort((a, b) => rank(a) - rank(b));
 	for (const c of order) {
 		if (!c.checked) continue;
+		c.state = "doing";
 		try {
 			plan.undo.push(await apply(c));
+			c.state = "done";
 			done++;
 		} catch (e) {
 			c.problem = e instanceof Error ? e.message : String(e);
+			c.state = "failed";
 			failed++;
 		}
 	}

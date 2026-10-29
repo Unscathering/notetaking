@@ -295,9 +295,10 @@
 							</ul>
 						{/if}
 						{#if m.text.trim()}
-							<div class="reply" class:streaming={m.streaming}>{@html markdown(m.text)}</div>
-						{:else if m.streaming}
-							<div class="thinking">{@html icon("sparkles", 13)}{#key word}<span in:fade={{ duration: ms }}>{THINKING[word]}…</span>{/key}</div>
+							<div class="reply" class:streaming={m.streaming && !m.thinking}>{@html markdown(m.text)}</div>
+						{/if}
+						{#if m.streaming && (m.thinking ?? !m.text.trim()) && !m.steps.some((s) => s.active)}
+							<div class="thinking">{@html icon("sparkles", 13)}{#key m.stage || word}<span in:fade={{ duration: ms }}>{m.stage || THINKING[word]}…</span>{/key}</div>
 						{/if}
 						{#if m.sources?.length && !m.streaming}
 							<div class="sources">

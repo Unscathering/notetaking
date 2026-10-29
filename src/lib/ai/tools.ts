@@ -22,6 +22,8 @@ export interface Change {
 	checked: boolean;
 	/** Set if it couldn't be done. */
 	problem?: string;
+	/** While the plan is being carried out. */
+	state?: "doing" | "done" | "failed";
 }
 
 type Args = Record<string, unknown>;
@@ -181,7 +183,8 @@ export function check(tool: string, a: Args, planned: Change[]): string {
 		const name = folderPath(a.name);
 		if (!name || name.includes("/")) return "Give the area a simple name, like 'Writing'.";
 		if (planned.some((c) => c.tool === "create_space" && folderPath(c.args.name).toLowerCase() === name.toLowerCase())) return `"${name}" is already in the plan.`;
-		return there(name) ? `There's already a folder called "${name}".` : "";
+		// An existing folder just gets the dashboard (and the look) added.
+		return there(name) && ws.files.includes(`${name}/${name} dashboard.md`) ? `"${name}" already has a dashboard.` : "";
 	}
 	if (tool === "create_home") {
 		if (planned.some((c) => c.tool === "create_home")) return "The home page is already in the plan.";
@@ -237,7 +240,7 @@ export function describe(tool: string, a: Args): { summary: string; icon: IconNa
 		case "set_home":
 			return { summary: `Make “${noteTitle(notePath(p))}” the home page`, icon: "home" };
 		case "create_space":
-			return { summary: `Make the area “${folderPath(a.name)}” with its own dashboard${str(a.about) ? `: ${str(a.about)}` : ""}`, icon: "folderPlus" };
+			return { summary: `${isFolder(folderPath(a.name)) ? "Give" : "Make"} the area “${folderPath(a.name)}” ${isFolder(folderPath(a.name)) ? "a" : "with its own"} dashboard${str(a.about) ? `: ${str(a.about)}` : ""}`, icon: "folderPlus" };
 		case "create_home":
 			return { summary: `Make a home page “${str(a.title) || "Home"}” linking to ${(Array.isArray(a.spaces) ? a.spaces : []).length || "every"} areas`, icon: "home" };
 		case "change_appearance":
@@ -373,14 +376,17 @@ export async function apply(c: Change): Promise<Undo> {
 		}
 		case "create_space": {
 			const name = folderPath(a.name);
-			await cave.mkdir(name);
+			const existed = isFolder(name);
+			const look = { ...ws.meta.looks[name] };
+			if (!existed) await cave.mkdir(name);
 			const dashboard = await cave.create(name, `${name} dashboard`, spaceDashboard(name, str(a.about)));
 			await ws.refresh();
-			await ws.setLook(name, { color: color(a.color) || undefined, icon: iconName(a.icon) || undefined });
+			await ws.setLook(name, { color: color(a.color) || look.color, icon: iconName(a.icon) || look.icon });
 			await useDashboardSnippet();
 			return async () => {
 				await ws.remove(dashboard);
-				await ws.remove(name);
+				if (!existed) await ws.remove(name);
+				else await ws.setLook(name, { color: look.color ?? "", icon: look.icon ?? "" });
 			};
 		}
 		case "create_home": {
