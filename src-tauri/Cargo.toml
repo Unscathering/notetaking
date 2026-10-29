@@ -1,6 +1,6 @@
 [package]
 name = "basalt"
-version = "0.19.1"
+version = "0.19.2"
 description = "A fast, light, fully customizable app for Markdown notes."
 edition = "2021"
 license = "MIT"

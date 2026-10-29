@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The model test: run Basalt's jobs on a model (or every model on this PC)
 	// and compare the scores. See ai/bench.svelte.ts.
-	import { AREAS, AREA_COUNT, JOB_COUNT, LONG_COUNT, bench, cancelTest, forgetRun, progress, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
+	import { AREAS, AREA_COUNT, JOB_COUNT, LONG_COUNT, TALK_COUNT, bench, type TestKind, cancelTest, forgetRun, progress, runTest, type Area, type TestRun } from "../../ai/bench.svelte";
 	import { ai } from "../../ai/engine.svelte";
 	import { MODELS } from "../../ai/models";
 	import { usingClaude } from "../../ai/claude.svelte";
@@ -10,16 +10,17 @@
 	const label = (file: string) => MODELS.find((m) => m.file === file)?.name ?? file.replace(/\.gguf$/i, "");
 	const minutes = (n: number) => (n < 1.5 ? "about a minute" : `about ${Math.round(n)} minutes`);
 	let open = $state<string | null>(null);
-	/** The long run (about 150 tests a model) instead of the quick one. */
-	let long = $state(false);
+	/** Quick, long (about 150 tests a model) or conversations (2 to 4 messages each). */
+	let kind = $state<TestKind>("quick");
 	/** Which models "Test the picked models" runs (all of them until you untick some). */
 	let skipped = $state<string[]>([]);
 	const picked = $derived(ai.models.map((m) => m.file).filter((f) => !skipped.includes(f)));
-	const count = $derived(long ? LONG_COUNT : JOB_COUNT);
-	const best = $derived(bench.runs[0]);
+	const count = $derived(kind === "long" ? LONG_COUNT : kind === "talks" ? TALK_COUNT : JOB_COUNT);
+	const key = (r: TestRun) => `${r.model}:${r.kind ?? "single"}`;
+	const best = $derived(bench.runs.find((r) => r.kind !== "talks"));
 	const tone = (n: number) => (n >= 80 ? "good" : n >= 55 ? "ok" : "bad");
 	const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-	const pick = (r: TestRun) => (open = open === r.model ? null : r.model);
+	const pick = (r: TestRun) => (open = open === key(r) ? null : key(r));
 	/** Ticks once a second while a test runs, for the clock. */
 	let now = $state(Date.now());
 	$effect(() => {
@@ -56,9 +57,10 @@
 			</div>
 		</div>
 	{:else}
-		<div class="length" role="radiogroup" aria-label="How long a test">
-			<button role="radio" aria-checked={!long} class:on={!long} onclick={() => (long = false)}>Quick · {JOB_COUNT} tests</button>
-			<button role="radio" aria-checked={long} class:on={long} onclick={() => (long = true)}>Long · {LONG_COUNT} tests</button>
+		<div class="length" role="radiogroup" aria-label="Which test">
+			<button role="radio" aria-checked={kind === "quick"} class:on={kind === "quick"} onclick={() => (kind = "quick")}>Quick · {JOB_COUNT}</button>
+			<button role="radio" aria-checked={kind === "long"} class:on={kind === "long"} onclick={() => (kind = "long")}>Long · {LONG_COUNT}</button>
+			<button role="radio" aria-checked={kind === "talks"} class:on={kind === "talks"} onclick={() => (kind = "talks")}>Conversations · {TALK_COUNT}</button>
 		</div>
 		{#if ai.models.length > 1}
 			<div class="pickers">
@@ -68,26 +70,32 @@
 			</div>
 		{/if}
 		<div class="buttons">
-			<button class="ghost" disabled={usingClaude() || !ai.model} onclick={() => runTest([ai.model], long)}>{@html icon("zap", 13)} Test {label(ai.model)}</button>
+			<button class="ghost" disabled={usingClaude() || !ai.model} onclick={() => runTest([ai.model], kind)}>{@html icon("zap", 13)} Test {label(ai.model)}</button>
 			{#if ai.models.length > 1}
-				<button class="ghost" disabled={usingClaude() || !picked.length} onclick={() => runTest(picked, long)}>{@html icon("layers", 13)} Test the {picked.length} ticked {picked.length === 1 ? "model" : "models"}</button>
+				<button class="ghost" disabled={usingClaude() || !picked.length} onclick={() => runTest(picked, kind)}>{@html icon("layers", 13)} Test the {picked.length} ticked {picked.length === 1 ? "model" : "models"}</button>
 			{/if}
 		</div>
 		{#if usingClaude()}<p class="hint">Turn off Claude above to test the models on this PC.</p>{/if}
-		<p class="hint small">{count} tests take {minutes(count * 0.05)} for a small model, longer for big ones{long ? " (an hour or more for Smart)" : ""}. Only downloaded models are tested.{long ? " The long test asks every test several times, worded differently, so the score is steadier." : ""}</p>
+		<p class="hint small">
+			{#if kind === "talks"}
+				{TALK_COUNT} conversations of 2 to 4 messages each ("make me a dashboard" → "make it red" → "add my tasks to it"). Each message's plan is carried out in the practice cave before the next, and each conversation is scored on how the cave ends up. Takes {minutes(TALK_COUNT * 0.2)} for a small model, longer for big ones.
+			{:else}
+				{count} tests take {minutes(count * 0.05)} for a small model, longer for big ones{kind === "long" ? " (an hour or more for Smart)" : ""}. Only downloaded models are tested.{kind === "long" ? " The long test asks every test several times, worded differently, so the score is steadier." : ""}
+			{/if}
+		</p>
 	{/if}
 	{#if bench.error}<p class="problem">{bench.error}</p>{/if}
 
 	{#if bench.runs.length}
 		<div class="runs">
-			{#each bench.runs as r (r.model)}
-				<div class="run" class:is-open={open === r.model}>
+			{#each bench.runs as r (key(r))}
+				<div class="run" class:is-open={open === key(r)}>
 					<button class="head" onclick={() => pick(r)}>
-						<b>{label(r.model)}</b>
+						<b>{label(r.model)}{#if r.kind === "talks"}<small class="kind"> · conversations</small>{/if}</b>
 						{#if r === best && bench.runs.length > 1}<span class="badge">Best here</span>{/if}
 						<span class="score score-{tone(r.score)}">{r.score}</span>
 						<span class="meta">{r.seconds.toFixed(r.seconds < 10 ? 1 : 0)} s a job{r.wordsPerSecond ? ` · ${Math.round(r.wordsPerSecond)} words/s` : ""}</span>
-						<span class="chev" class:down={open === r.model}>{@html icon("chevron", 12)}</span>
+						<span class="chev" class:down={open === key(r)}>{@html icon("chevron", 12)}</span>
 					</button>
 					{#if r.setup || r.readsPerSecond}
 						<p class="setup">{@html icon("cpu", 11)} {[r.setup, r.readsPerSecond ? `reads ${Math.round(r.readsPerSecond)} words/s` : ""].filter(Boolean).join(" · ")}</p>
@@ -100,7 +108,7 @@
 							<span title={AREAS[a as Area]}><em class="score-{tone(n ?? 0)}" style="width: {n}%"></em><i>{AREAS[a as Area]}</i><b>{n}</b></span>
 						{/each}
 					</div>
-					{#if open === r.model}
+					{#if open === key(r)}
 						<ul class="jobs">
 							{#each r.jobs as j (j.id)}
 								<li class:is-miss={j.score < 1}>
@@ -116,7 +124,7 @@
 						</ul>
 						<div class="foot">
 							<span>Tested {day(r.when)}</span>
-							<button class="ghost danger" onclick={() => forgetRun(r.model)}>Forget this result</button>
+							<button class="ghost danger" onclick={() => forgetRun(r)}>Forget this result</button>
 						</div>
 					{/if}
 				</div>
@@ -142,6 +150,10 @@
 	.problem {
 		color: #e05d5d;
 		font-size: 12px;
+	}
+	.kind {
+		color: var(--muted);
+		font-weight: 500;
 	}
 	.length {
 		display: inline-flex;

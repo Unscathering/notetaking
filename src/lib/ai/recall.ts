@@ -103,3 +103,10 @@ export function unbacked(answer: string, sources: string[]): string[] {
 	}
 	return out;
 }
+
+/** The telling ones of `unbacked`: dates, times and numbers of three or more digits (not "3 tasks"). */
+export const madeUpNumbers = (answer: string, sources: string[]) => unbacked(answer, sources).filter((n) => /[-/:.]/.test(n) || n.length >= 3);
+
+/** What the AI is told when its answer has numbers its notes don't. */
+export const recheck = (off: string[]) =>
+	`(Basalt: your answer says ${off.join(", ")}, but the notes don't say that. Look at the note again and answer with the dates, times and numbers written exactly as the note writes them, and name the note as a [[link]]. If the notes don't have it, say so.)`;

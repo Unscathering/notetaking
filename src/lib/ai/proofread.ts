@@ -21,7 +21,8 @@ export const MODES: Record<Mode, { name: string; about: string; working: string 
 const RULES: Record<Mode, string> = {
 	grammar: `You are a strict proofreader. Correct ONLY spelling, grammar, punctuation and capitalization mistakes.
 Never change word choice, tone, style or meaning. Never add or remove sentences. Never rephrase.
-Grammar mistakes you must fix include: a verb that doesn't fit its subject or time ("yesterday we goes" → "yesterday we went"), the wrong pronoun ("me and my friend went" → "my friend and I went"), "should of" → "should have", its/it's, your/you're, their/there/they're, and a missing capital letter at the start of a sentence or for "I".
+Grammar mistakes you must fix include: a verb that doesn't fit its subject or time ("yesterday we goes" → "yesterday we went", "he don't" → "he doesn't", "the kids is" → "the kids are"), the wrong pronoun ("me and my friend went" → "my friend and I went"), "should of" → "should have", its/it's, your/you're, their/there/they're, to/too, then/than, a plural written with an apostrophe or a wrong ending ("babys" → "babies"), and a missing capital letter at the start of a sentence or for "I".
+Check EVERY one of these words on its own: one sentence often has the same kind of mistake twice. Example: "there coming over with there cat, it's fur is everywhere to" → "They're coming over with their cat, its fur is everywhere too."
 If a line has no mistakes, give it back exactly as it was.`,
 	fix: `You are a careful editor. Fix spelling and grammar, and smooth out what's inconsistent or awkward: mixed tenses, a name or term written different ways, clumsy or unclear phrasing, repeated words.
 Keep the writer's own voice, words and meaning. Change as little as possible. Don't add new ideas.`,

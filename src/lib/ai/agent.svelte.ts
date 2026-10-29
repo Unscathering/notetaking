@@ -15,8 +15,8 @@
 import { ws } from "../workspace.svelte";
 import type { IconName } from "../ui/icons";
 import { CONTEXT, ai, saveCache, stream, writerAwake } from "./engine.svelte";
-import { GROUPS, TOOLS, WRITES, apply, check, context, describe, fixLiveBlock, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
-import { echoes, recall, unbacked, type Found } from "./recall";
+import { GROUPS, NAMES_A_NOTE, TOOLS, WRITES, apply, check, context, describe, fixLiveBlock, fixNotePath, groupOf, groupsByWords, look, toolsFor, type Change, type Group } from "./tools";
+import { echoes, madeUpNumbers, recall, recheck, unbacked, type Found } from "./recall";
 import { usingClaude } from "./claude.svelte";
 import { noteTitle } from "../cave";
 import { backUp } from "../backups.svelte";
@@ -500,6 +500,7 @@ export async function send(text: string, pictures: Array<{ full: string; thumb: 
 	let failed = false;
 	/** Sent back once to actually make changes it only described. */
 	let nudged = false;
+	let rechecked = false;
 	const done = new Set<string>();
 	let changeId = 1;
 	let memories = 0;
@@ -588,6 +589,18 @@ export async function send(text: string, pictures: Array<{ full: string; thumb: 
 					}
 					say(reply, { claimed: true });
 				}
+				// A date, time or number the notes don't have ("Nov 15, room 210" when the note says 14 and 204):
+				// sent back once to copy it from the note.
+				if (!stopped && !plan.length && !rechecked) {
+					const texts = [...[...read].map((p) => ws.texts.get(p) ?? ""), ...found.map((f) => f.excerpt)];
+					const off = texts.length ? madeUpNumbers(content, texts) : [];
+					if (off.length) {
+						rechecked = true;
+						history.push({ role: "user", content: recheck(off) });
+						say(reply, { text: "" });
+						continue;
+					}
+				}
 				break;
 			}
 			history.push({ role: "assistant", content, raw, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
@@ -622,7 +635,8 @@ export async function send(text: string, pictures: Array<{ full: string; thumb: 
 					result = groupOf(call.name) === "style" ? "The user didn't ask about the app's look, so leave it as it is." : `There's no tool called ${call.name}.`;
 					refused = true;
 				} else if (WRITES.has(call.name)) {
-					if (call.name === "add_live_block") args = fixLiveBlock(args, (t) => ws.tags.has(t), ws.folders);
+					if (NAMES_A_NOTE.has(call.name)) args = fixNotePath(args, text, ws.files);
+					if (call.name === "add_live_block") args = fixLiveBlock(args, (t) => ws.tags.has(t), ws.folders, text, ws.files);
 					const problem = check(call.name, args, plan);
 					if (problem) {
 						result = `Not added to the plan: ${problem}`;

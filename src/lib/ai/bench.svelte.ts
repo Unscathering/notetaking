@@ -1,4 +1,5 @@
-// The model test: about 20 real Basalt jobs, run on a model and scored, so
+// The model test: real Basalt jobs (single messages, and conversations of 2 to
+// 4 messages in talks.ts), run on a model and scored, so
 // models can be compared on what Basalt needs (planning the right changes,
 // fixing grammar without changing words, answering from notes) and on how
 // fast they are on this PC.
@@ -7,29 +8,20 @@
 // that only exists here: looking around reads from it, and planned changes
 // are only scored, never carried out. The real instructions, tools and
 // request sorting are used, so the score reflects real use.
-import { TOOLS, WRITES, fixLiveBlock, groupOf, look, selectorProblem, tagProblem, toolsFor, type Group } from "./tools";
-import { foundNotes, instructions, sortRequest } from "./agent.svelte";
+import { NAMES_A_NOTE, TOOLS, WRITES, fixLiveBlock, fixNotePath, groupOf, look, selectorProblem, tagProblem, toolsFor, type Group } from "./tools";
+import { claimsChanges, foundNotes, instructions, sortRequest } from "./agent.svelte";
 import { ai, loadedModel, stop, stopAnswer, stream, useModel, wake } from "./engine.svelte";
-import { echoes, recall } from "./recall";
+import { echoes, madeUpNumbers, recall, recheck } from "./recall";
 import { clean, request } from "./proofread";
 import { parseSpec } from "../query";
 import { inDesktopApp } from "../cave";
+import { TALKS, applyPractice, resetWorld, world, type Talk, type Turn } from "./talks";
 
 // ---- The practice cave ----
 
-const FOLDERS = ["School", "School/Biology", "Work", "Recipes", "Journal"];
-const NOTES: Record<string, string> = {
-	"School/Biology/Cell notes.md": "# Cell notes\n\nMitochondria make energy for the cell. Ribosomes build proteins.\n\nThe biology exam is on 2026-11-14 (a Saturday morning, room 204).\n\n- [ ] Review chapter 3 due:2026-11-10\n- [ ] Make flashcards\n",
-	"School/Math homework.md": "# Math homework\n\n- [ ] Problems 1-12 on page 88 due:2026-11-03\n",
-	"Work/Meeting with Sam.md": "# Meeting with Sam\n\n**Who:** Sam, me\n\n## Decisions\n- We'll launch the new website on March 3.\n- Sam handles the photos; I write the About page.\n\n## Next steps\n- [ ] Draft the About page\n",
-	"Work/Ideas for the shop.md": "# Ideas for the shop\n\n- Gift cards\n- A newsletter\n",
-	"Recipes/Pancakes.md": "# Pancakes\n\n#breakfast\n\n2 eggs, 1 cup flour, 1 cup milk. Rest the batter 10 minutes.\n",
-	"Recipes/Tomato soup.md": "# Tomato soup\n\n#dinner\n\nRoast the tomatoes first.\n",
-	"Journal/2026-10-27.md": "# Monday, 2026-10-27\n\nWent for a long run. Felt great.\n",
-	"Ideas.md": "# Ideas\n\n- Start a podcast\n- Learn guitar\n",
-	"Groceries.md": "# Groceries\n\n- [ ] Milk\n- [ ] Eggs\n",
-	"Old draft.md": "# Old draft\n\nThe beginning of an essay about cities.\n",
-};
+// The same practice cave the conversations (talks.ts) change as they go; reset before each test.
+const FOLDERS = world.folders;
+const NOTES = world.notes;
 const title = (p: string) => p.split("/").pop()!.replace(/\.md$/, "");
 /** Like Basalt's own lookup (ws.resolve): the full path, or else the note's name alone. */
 const findNote = (name: unknown) => {
@@ -86,6 +78,10 @@ function practiceCheck(tool: string, a: Record<string, unknown>): string {
 			return findNote(a.path) ? "" : needs(a.path);
 		case "create_snippet":
 			return selectorProblem(String(a.css ?? ""));
+		case "add_card":
+			return findNote(a.board) ? "" : needs(a.board);
+		case "restyle_dashboard":
+			return findNote(a.path) ? "" : needs(a.path);
 		case "add_live_block": {
 			if (!findNote(a.path)) return needs(a.path);
 			const tag = String(a.tag ?? "").replace(/^#/, "").toLowerCase();
@@ -127,8 +123,8 @@ const cites = (o: Outcome, note: string) =>
 /** 0 to 1, and why points were lost. */
 type Score = { score: number; notes: string[] };
 
-export type Area = "organize" | "dashboards" | "style" | "writing" | "answers" | "care" | "limits";
-export const AREAS: Record<Area, string> = { organize: "Organizing", dashboards: "Dashboards and boards", style: "Customizing", writing: "Grammar fixes", answers: "Answers from notes", care: "Care (no surprises)", limits: "Knows its limits" };
+export type Area = "organize" | "dashboards" | "style" | "writing" | "answers" | "care" | "limits" | "talks";
+export const AREAS: Record<Area, string> = { organize: "Organizing", dashboards: "Dashboards and boards", style: "Customizing", writing: "Grammar fixes", answers: "Answers from notes", care: "Care (no surprises)", limits: "Knows its limits", talks: "Conversations (2 to 4 messages)" };
 
 interface Job {
 	id: string;
@@ -138,6 +134,8 @@ interface Job {
 	/** For grammar jobs: the text and the right answers (any of them counts). */
 	grammar?: { text: string; right: string[] };
 	score?: (o: Outcome) => Score;
+	/** A conversation of several messages instead of one. */
+	talk?: Talk;
 }
 
 const lc = (v: unknown) => String(v ?? "").trim().toLowerCase();
@@ -675,8 +673,15 @@ const PAIRS: Array<[string, string]> = [
 /** How many tests one run asks. */
 export const JOB_COUNT = PAIRS.length;
 
-function pickJobs(long = false): Job[] {
-	if (long) return longJobs();
+export type TestKind = "quick" | "long" | "talks";
+
+/** The conversations, as tests. */
+const talkJobs = (): Job[] => TALKS.map((t) => ({ id: t.id, area: "talks", ask: t.steps.map((x) => x.replace(/^\?/, "")).join(" → "), talk: t }));
+export const TALK_COUNT = TALKS.length;
+
+function pickJobs(kind: TestKind = "quick"): Job[] {
+	if (kind === "talks") return talkJobs();
+	if (kind === "long") return longJobs();
 	return PAIRS.map((pair) => {
 		const id = pair[Math.random() < 0.5 ? 0 : 1];
 		return JOBS.find((j) => j.id === id)!;
@@ -749,6 +754,8 @@ export interface JobResult {
 
 export interface TestRun {
 	model: string;
+	/** Single messages (quick or long), or conversations. Kept apart: a model has one result of each. */
+	kind?: "single" | "talks";
 	when: string;
 	/** 0 to 100. */
 	score: number;
@@ -806,7 +813,7 @@ export const AREA_COUNT = Object.keys(AREAS).length;
 
 function keep(run: TestRun) {
 	// Best first; on a tie, the faster one.
-	bench.runs = [run, ...bench.runs.filter((r) => r.model !== run.model)].sort((a, b) => b.score - a.score || a.seconds - b.seconds);
+	bench.runs = [run, ...bench.runs.filter((r) => r.model !== run.model || (r.kind ?? "single") !== (run.kind ?? "single"))].sort((a, b) => b.score - a.score || a.seconds - b.seconds);
 	try {
 		localStorage.setItem(KEY, JSON.stringify(bench.runs));
 	} catch {
@@ -831,20 +838,29 @@ function setupText(): string {
 }
 
 /** Runs one conversation job in the practice cave and returns what it planned and said. */
-async function converse(job: Job): Promise<Outcome> {
-	const groups: Group[] = await sortRequest(job.ask, "", []).catch(() => []);
+type Msg = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
+
+/**
+ * Runs one message in the practice cave and returns what it planned and said.
+ * In a conversation, `before` is what was said so far and `last`, `lastGroups`
+ * what the AI said and needed the message before, as in a real chat.
+ */
+async function converse(job: Job, before: Msg[] = [], last = "", lastGroups: Group[] = []): Promise<Outcome & { messages: Msg[]; groups: Group[] }> {
+	const groups: Group[] = await sortRequest(job.ask, last, lastGroups).catch(() => []);
 	const tools = toolsFor(groups);
 	// As in a real chat, the notes that best match the message come with it.
 	const found = recall(new Map(Object.entries(NOTES)), job.ask, title, 3);
 	const cave = `Cave: Practice (${Object.keys(NOTES).length} notes, ${FOLDERS.length} folders).\nNo note is open.${foundNotes(found)}`;
-	type Msg = { role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string };
 	const messages: Msg[] = [
 		{ role: "system", content: instructions("") },
+		...before,
 		{ role: "user", content: `${job.ask}\n\n(${cave})` },
 	];
 	const started = performance.now();
 	const out: Outcome = { plan: [], calls: [], text: "", seconds: 0, found: found.map((f) => f.path) };
 	const done = new Set<string>();
+	let rechecked = false;
+	let nudged = false;
 	for (let round = 0; round < 8; round++) {
 		let content = "";
 		const got: Array<{ id: string; name: string; args: string }> = [];
@@ -861,10 +877,29 @@ async function converse(job: Job): Promise<Outcome> {
 				if (t.function?.arguments) got[i].args += t.function.arguments;
 			}
 		}, "main");
-		out.text += content;
 		const real = got.filter(Boolean);
 		if (stopped) throw new Error("Took too long");
-		if (!real.length) break;
+		// As in a chat: numbers the notes don't have are sent back once.
+		if (!real.length && !out.plan.length && !rechecked) {
+			const read = out.calls.filter((c) => c.name === "read_note").map((c) => NOTES[findNote(c.args.path) ?? ""] ?? "");
+			const off = madeUpNumbers(content, [...read, ...found.map((f) => f.excerpt)]);
+			if (off.length) {
+				rechecked = true;
+				messages.push({ role: "assistant", content }, { role: "user", content: recheck(off) });
+				continue;
+			}
+		}
+		// As in a chat: "I've made it red" with nothing changed is sent back once to really do it.
+		if (!real.length && !out.plan.length && !nudged && tools.some((t) => WRITES.has(t.function.name)) && claimsChanges(content)) {
+			nudged = true;
+			messages.push({ role: "assistant", content }, { role: "user", content: "(Basalt: you described changes, but you didn't use any tool, so NOTHING has changed. Make the changes now with the tools, or tell the user plainly that you can't do it and why. Don't describe changes you haven't made.)" });
+			continue;
+		}
+		out.text += content;
+		if (!real.length) {
+			messages.push({ role: "assistant", content });
+			break;
+		}
 		messages.push({ role: "assistant", content, tool_calls: real.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })) });
 		let fresh = 0;
 		for (const c of real) {
@@ -884,7 +919,8 @@ async function converse(job: Job): Promise<Outcome> {
 			// As in a real chat: the look stays as it is unless the request was about it.
 			else if (groupOf(c.name) === "style" && !tools.some((t) => t.function.name === c.name)) result = "The user didn't ask about the app's look, so leave it as it is.";
 			else if (WRITES.has(c.name)) {
-				if (c.name === "add_live_block") args = fixLiveBlock(args, (t) => ["breakfast", "dinner"].includes(t), FOLDERS);
+				if (NAMES_A_NOTE.has(c.name)) args = fixNotePath(args, job.ask, Object.keys(NOTES));
+				if (c.name === "add_live_block") args = fixLiveBlock(args, (t) => ["breakfast", "dinner"].includes(t), FOLDERS, job.ask, Object.keys(NOTES));
 				const problem = practiceCheck(c.name, args);
 				if (problem) result = `Not added to the plan: ${problem}`;
 				else {
@@ -899,7 +935,46 @@ async function converse(job: Job): Promise<Outcome> {
 		if (!fresh) break;
 	}
 	out.seconds = (performance.now() - started) / 1000;
-	return out;
+	return { ...out, messages: messages.slice(1), groups };
+}
+
+/**
+ * A conversation: each message in turn, its plan carried out in the practice
+ * cave before the next (as if "Do it" was pressed), then the cave is checked.
+ */
+async function talk(job: Job): Promise<Score & { did: string }> {
+	const t = job.talk!;
+	resetWorld();
+	let history: Msg[] = [];
+	let last = "";
+	let groups: Group[] = [];
+	const turns: Turn[] = [];
+	const checks: Array<[boolean, string]> = [];
+	const did: string[] = [];
+	try {
+		for (const [i, step] of t.steps.entries()) {
+			const asking = step.startsWith("?");
+			const ask = step.replace(/^\?/, "");
+			bench.current = `${job.ask} · message ${i + 1} of ${t.steps.length}: ${ask}`;
+			const o = await converse({ ...job, ask }, history, last, groups);
+			turns.push({ plan: o.plan, text: o.text });
+			did.push(`${i + 1}. “${ask}”\n${didText(o)}`);
+			for (const c of o.plan) applyPractice(c.name, c.args);
+			if (!asking) checks.push([o.plan.length > 0, `Message ${i + 1} (“${ask}”) didn't change anything`]);
+			if (!o.plan.length && claimsChanges(o.text)) checks.push([false, `Message ${i + 1}: it said it made changes, but nothing changed`]);
+			history = o.messages;
+			if (o.plan.length) history.push({ role: "user", content: "(I approved your plan, so those changes are made now.)" });
+			last = o.text;
+			groups = o.groups;
+		}
+		checks.push(...t.check(world, turns));
+	} finally {
+		resetWorld();
+	}
+	// Nothing it was asked to change changed: no points for what "isn't there anymore" by chance.
+	const changes = t.steps.map((x, i) => [x, turns[i]] as const).filter(([x, turn]) => !x.startsWith("?") && turn);
+	if (changes.length && changes.every(([, turn]) => !turn.plan.length)) return { score: 0, notes: ["Nothing it was asked to change changed", ...tally(checks).notes], did: did.join("\n\n") };
+	return { ...tally(checks), did: did.join("\n\n") };
 }
 
 /** Words that differ between two texts (a word-level edit distance). */
@@ -929,7 +1004,7 @@ async function grammar(job: Job): Promise<Score & { got: string }> {
 }
 
 /** What a conversation job did, in short, to show under a miss. */
-function did(o: Outcome): string {
+function didText(o: Outcome): string {
 	const acts = o.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1).slice(0, 140)})`);
 	const reply = o.text.trim().replace(/\s+/g, " ").slice(0, 220);
 	return [acts.length ? `Did: ${acts.join(" → ")}` : "Did: nothing", reply ? `Said: “${reply}${o.text.trim().length > 220 ? "…" : ""}”` : ""].filter(Boolean).join("\n");
@@ -993,7 +1068,7 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 		bench.job = i + 1;
 		bench.current = job.ask;
 		const t0 = performance.now();
-		const limit = setTimeout(stopAnswer, JOB_LIMIT_S * 1000);
+		const limit = setTimeout(stopAnswer, JOB_LIMIT_S * (job.talk?.steps.length ?? 1) * 1000);
 		let s: Score;
 		let what = "";
 		try {
@@ -1001,17 +1076,22 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 				const g = await grammar(job);
 				s = g;
 				what = `Got: “${g.got}”`;
+			} else if (job.talk) {
+				const r = await talk(job);
+				s = r;
+				what = r.did;
 			} else {
+				resetWorld();
 				const o = await converse(job);
 				s = job.score!(o);
-				what = did(o);
+				what = didText(o);
 			}
 		} catch (e) {
 			s = { score: 0, notes: [e instanceof Error ? e.message : String(e)] };
 		} finally {
 			clearTimeout(limit);
 		}
-		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000, ...((s.score < 1 || performance.now() - t0 > 15000) && what ? { did: what } : {}) });
+		results.push({ id: job.id, area: job.area, ask: job.ask, score: s.score, notes: s.notes, seconds: (performance.now() - t0) / 1000, ...((s.score < 1 || performance.now() - t0 > 15000 * (job.talk?.steps.length ?? 1)) && what ? { did: what } : {}) });
 		bench.done = [...results];
 	}
 	bench.modelSeconds = [...bench.modelSeconds, (Date.now() - bench.modelStarted) / 1000];
@@ -1038,10 +1118,10 @@ async function testModel(jobs: Job[]): Promise<TestRun> {
 }
 
 /** Tests the model in use, or each of `models` in turn (then goes back to the one in use). */
-export async function runTest(models: string[] = [ai.model], long = false) {
+export async function runTest(models: string[] = [ai.model], kind: TestKind = "quick") {
 	if (bench.running) return;
 	const before = ai.model;
-	const picks = pickJobs(long);
+	const picks = pickJobs(kind);
 	Object.assign(bench, { running: true, cancelled: false, error: "", models: models.length, modelIndex: 0, started: Date.now(), modelSeconds: [], done: [], current: "" });
 	try {
 		for (const [i, model] of models.entries()) {
@@ -1049,7 +1129,7 @@ export async function runTest(models: string[] = [ai.model], long = false) {
 			bench.modelIndex = i + 1;
 			bench.model = model;
 			if (inDesktopApp && ai.model !== model) await useModel(model);
-			const run = await testModel(picks);
+			const run = { ...(await testModel(picks)), kind: kind === "talks" ? ("talks" as const) : ("single" as const) };
 			// A run cut short isn't a fair score.
 			if (!bench.cancelled) keep(run);
 		}
@@ -1066,8 +1146,8 @@ export function cancelTest() {
 	stopAnswer();
 }
 
-export function forgetRun(model: string) {
-	bench.runs = bench.runs.filter((r) => r.model !== model);
+export function forgetRun(run: TestRun) {
+	bench.runs = bench.runs.filter((r) => r !== run);
 	try {
 		localStorage.setItem(KEY, JSON.stringify(bench.runs));
 	} catch {

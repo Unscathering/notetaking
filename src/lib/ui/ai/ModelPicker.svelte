@@ -9,7 +9,7 @@
 	const hw = $derived(ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
 	const installed = (file: string) => ai.models.some((m) => m.file === file);
 	// Once models have been through the model test on this PC, the best of them is the pick.
-	const tested = $derived(bench.runs.find((r) => installed(r.model) && MODELS.some((m) => m.file === r.model)));
+	const tested = $derived(bench.runs.find((r) => r.kind !== "talks" && installed(r.model) && MODELS.some((m) => m.file === r.model)));
 	const best = $derived(MODELS.find((m) => m.file === tested?.model) ?? recommendedModel());
 	const gb = (mb: number) => `${Math.round(mb / 1024)} GB`;
 	/** Model files on this PC that aren't one of the cards (older ones, or ones you added). */

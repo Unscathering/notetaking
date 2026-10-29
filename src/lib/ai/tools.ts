@@ -751,9 +751,24 @@ function liveBlock(a: Args): string {
  * list that names nothing to list by but is titled like a folder: they're put
  * right before they're checked. Shared with the model test.
  */
-export function fixLiveBlock(a: Args, tagUsed: (tag: string) => boolean, folders: string[]): Args {
-	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
+export function fixLiveBlock(a: Args, tagUsed: (tag: string) => boolean, folders: string[], asked = "", files: string[] = []): Args {
+	const stem = folderStem;
 	const folderNamed = (name: string) => folders.find((f) => stem(f.split("/").pop()!) === stem(name));
+	// Every note of one folder, picked one by one ("all my recipes"), is that folder: new ones show up too.
+	const picked = Array.isArray(a.notes) ? a.notes.map((n) => str(n).replace(/\.md$/i, "")) : [];
+	if (picked.length > 1) {
+		const folder = picked[0].includes("/") ? picked[0].split("/").slice(0, -1).join("/") : "";
+		const inside = files.filter((f) => f.startsWith(`${folder}/`) && !f.slice(folder.length + 1).includes("/")).map((f) => f.replace(/\.md$/i, ""));
+		if (folder && inside.length && inside.every((f) => picked.includes(f)) && picked.every((p) => inside.includes(p))) {
+			const { notes: _, ...rest } = a;
+			return { ...rest, list: "notes", from: folder };
+		}
+	}
+	// A list of notes that names nothing to list by, where the request names a folder ("all my recipes"), lists that folder.
+	if (!str(a.from) && !str(a.tag) && !str(a.where) && !str(a.search) && !picked.length && ["", "notes"].includes(str(a.list)) && !str(a.title)) {
+		const named = folders.filter((f) => new RegExp(`\\b${stem(f.split("/").pop()!)}(e?s)?\\b`, "i").test(asked));
+		if (named.length === 1) return { ...a, from: named[0] };
+	}
 	// A list of notes that names nothing to list by, titled like a folder ("Recipes"), lists that folder.
 	if (!str(a.from) && !str(a.tag) && !str(a.where) && !str(a.search) && ["", "notes"].includes(str(a.list)) && str(a.title) && folderNamed(str(a.title))) return { ...a, from: folderNamed(str(a.title)) };
 	const tag = str(a.tag).replace(/^#/, "").toLowerCase();
@@ -764,13 +779,45 @@ export function fixLiveBlock(a: Args, tagUsed: (tag: string) => boolean, folders
 	return { ...rest, from: folder, list: str(a.list) === "tags" ? "notes" : a.list };
 }
 
+/** Changes whose `path` is a note the user may have named ("my ideas note"). */
+export const NAMES_A_NOTE = new Set(["add_live_block", "append_to_note", "edit_note", "restyle_dashboard", "create_dashboard"]);
+
+/** A folder or tag name without its plural ending, to match "Recipes" with "recipe" and "Stories" with "story". */
+export const folderStem = (w: string) =>
+	w
+		.toLowerCase()
+		.replace(/ies$/, "y")
+		.replace(/(ch|sh|x|ss)es$/, "$1")
+		.replace(/(?<!s)s$/, "");
+
+/**
+ * "My ideas note" means the note called Ideas, even when a note like "Ideas for
+ * the shop" exists too: if the request names a note that exists by that exact
+ * name and the AI picked another one, the named one is used.
+ */
+export function fixNotePath(a: Args, asked: string, notes: string[]): Args {
+	const path = str(a.path);
+	if (!path) return a;
+	const titleOf = (p: string) => p.replace(/\.md$/i, "").split("/").pop()!.toLowerCase();
+	const words = asked.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+	for (let i = 0; i < words.length; i++) {
+		if (words[i] !== "note") continue;
+		for (let n = Math.min(4, i); n >= 1; n--) {
+			const name = words.slice(i - n, i).join(" ");
+			const exact = notes.find((p) => titleOf(p) === name);
+			if (exact) return titleOf(path) === name ? a : { ...a, path: exact.replace(/\.md$/i, "") };
+		}
+	}
+	return a;
+}
+
 /**
  * A live list by a tag no note has would show nothing; usually the AI meant a
  * folder ("tag: recipe" for the Recipes folder). Shared with the model test.
  */
 export function tagProblem(tag: string, used: boolean, folders: string[]): string {
 	if (!tag || used) return "";
-	const stem = (w: string) => w.toLowerCase().replace(/(es|s)$/, "");
+	const stem = folderStem;
 	const folder = folders.find((f) => stem(f.split("/").pop()!) === stem(tag));
 	return `No note has the tag #${tag}, so the list would be empty.${folder ? ` To list the notes in the ${folder} folder, use from: ${folder} instead of tag.` : ""}`;
 }
@@ -789,7 +836,9 @@ export function strangeSelectors(css: string): string[] {
 		.flatMap((head) => head.split(","))
 		.map((x) => x.trim())
 		.filter((x) => x && !/^(from|to|\d+%)$/.test(x));
-	return selectors.filter((x) => !known.test(x));
+	// Names that look like Basalt's but aren't (a dashboard note is .note-dashboard).
+	const madeUp = /\.basalt-(dashboard|note|page|container|wrapper|app|content|editor)(?![\w-])/;
+	return selectors.filter((x) => !known.test(x) || madeUp.test(x));
 }
 const SNIPPET_HINT = `Basalt's own names: a note with "cssclass: dashboard" is .note-dashboard, live-list cards are .basalt-card, headings are .cm-h1 to .cm-h6, the note's text is .cm-content. basalt_help has the full list.`;
 export const selectorProblem = (css: string) => {
