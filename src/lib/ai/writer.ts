@@ -3,7 +3,7 @@
 // chat and the editor never fight over the engine.
 import type { WritingHelpHooks } from "../editor/writingHelp";
 import { writing } from "../writing.svelte";
-import { ai, refresh, stream, wake } from "./engine.svelte";
+import { ai, refresh, stream, wake, writerAwake } from "./engine.svelte";
 import { clean, request, type Mode } from "./proofread";
 import { usingClaude } from "./claude.svelte";
 
@@ -18,7 +18,7 @@ function inTurn<T>(job: () => Promise<T>): Promise<T> {
 
 async function ask(mode: Mode, lines: string[]): Promise<string> {
 	let text = "";
-	await stream(request(mode, lines), (d) => (text += ((d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? "")));
+	await stream(request(mode, lines), (d) => (text += ((d.choices as Array<{ delta?: { content?: string } }> | undefined)?.[0]?.delta?.content ?? "")), "writer");
 	return clean(text, lines.join("\n"));
 }
 
@@ -51,7 +51,7 @@ export function helperReady(): boolean {
 
 /** Starts waking the engine early, so the first answer comes sooner. */
 export function warmUp() {
-	if (!usingClaude() && ai.phase === "ready" && !ai.running && !ai.starting) void wake().catch(() => {});
+	if (!usingClaude() && ai.phase === "ready" && !writerAwake() && !ai.starting) void wake("writer").catch(() => {});
 }
 
 /** What the editor's writing help needs from the AI. */
@@ -72,11 +72,14 @@ export interface SpeedResult {
 	verdict: string;
 }
 
-/** Times a grammar check of one paragraph, the way writing help does it. */
-export async function speedTest(): Promise<SpeedResult> {
+/**
+ * Times a grammar check of one paragraph, the way writing help does it. With
+ * `slot` "main", it times the chat model instead (when writing help has its own).
+ */
+export async function speedTest(slot: "writer" | "main" = "writer"): Promise<SpeedResult> {
 	const t0 = performance.now();
-	const asleep = !ai.running && !usingClaude();
-	if (!usingClaude()) await wake();
+	const asleep = !(slot === "writer" ? writerAwake() : ai.running) && !usingClaude();
+	if (!usingClaude()) await wake(slot);
 	const wakeS = asleep ? (performance.now() - t0) / 1000 : 0;
 	const t1 = performance.now();
 	let text = "";
@@ -86,12 +89,18 @@ export async function speedTest(): Promise<SpeedResult> {
 		// The engine reports its own speed at the end, in tokens (about ¾ of a word each).
 		const timings = d.timings as { predicted_per_second?: number } | undefined;
 		if (timings?.predicted_per_second) perSecond = timings.predicted_per_second * 0.75;
-	});
+	}, slot);
 	const paragraph = (performance.now() - t1) / 1000;
 	const words = text.split(/\s+/).filter(Boolean).length;
 	const wordsPerSecond = perSecond || words / Math.max(paragraph, 0.1);
 	const verdict =
-		paragraph <= 4
+		slot === "main"
+			? wordsPerSecond >= 18
+				? "Fast. Chats and big jobs like setting up folders move along quickly."
+				: wordsPerSecond >= 7
+					? "Fine. Big jobs take a few minutes, and you can watch each step."
+					: "Slow on this PC. Big jobs will take a long time; try a smaller model under AI models."
+			: paragraph <= 4
 			? "Fast. Grammar checks feel quick, and checking as you write works well."
 			: paragraph <= 10
 				? "Fine for checking a selection. A long note takes a while, so check it in parts."

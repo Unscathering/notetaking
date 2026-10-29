@@ -2,7 +2,7 @@
 // The engine only runs while you use the AI and goes to sleep after a few
 // quiet minutes, so it takes no memory the rest of the time.
 import { inDesktopApp } from "../cave";
-import { MODELS, gpuLayers, recommended, type Hardware } from "./models";
+import { MODELS, cpuExperts, gpuLayers, recommended, type Hardware } from "./models";
 import { claudeStream, stopClaude, usingClaude } from "./claude.svelte";
 
 export interface ModelFile {
@@ -17,11 +17,11 @@ const SLEEP_MINUTES = 5;
 /** For trying the AI in a browser: the address of an engine running elsewhere. */
 const devUrl = () => (inDesktopApp ? "" : (localStorage.getItem("basalt.ai-dev-url") ?? ""));
 
-function saved(): { model: string } {
+function saved(): { model: string; writerModel: string } {
 	try {
-		return { model: "", ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as { model?: string }) };
+		return { model: "", writerModel: "", ...(JSON.parse(localStorage.getItem(KEY) ?? "{}") as { model?: string; writerModel?: string }) };
 	} catch {
-		return { model: "" };
+		return { model: "", writerModel: "" };
 	}
 }
 
@@ -33,6 +33,10 @@ export const ai = $state({
 	hardware: null as Hardware | null,
 	/** The model file in use. */
 	model: saved().model,
+	/** A smaller model just for writing help ("" to use the main one). */
+	writerModel: saved().writerModel,
+	/** Whether the writing help model is loaded. */
+	writerRunning: false,
 	folder: "",
 	download: null as { what: string; done: number; total: number } | null,
 	running: false,
@@ -40,7 +44,7 @@ export const ai = $state({
 	error: "",
 });
 
-const remember = () => localStorage.setItem(KEY, JSON.stringify({ model: ai.model }));
+const remember = () => localStorage.setItem(KEY, JSON.stringify({ model: ai.model, writerModel: ai.writerModel }));
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 	const core = await import("@tauri-apps/api/core");
@@ -65,6 +69,7 @@ export async function refresh() {
 	const s = await invoke<{ engine: boolean; models: ModelFile[]; ramMb: number; running: boolean; folder: string }>("ai_status");
 	Object.assign(ai, { engine: s.engine, models: s.models, running: s.running, folder: s.folder });
 	if (!s.models.some((m) => m.file === ai.model)) ai.model = s.models[0]?.file ?? "";
+	if (!s.models.some((m) => m.file === ai.writerModel)) ai.writerModel = "";
 	ai.phase = s.engine && ai.model ? "ready" : "setup";
 	// Checking the graphics card takes a few seconds, so show what we found last
 	// time straight away and check again quietly.
@@ -73,7 +78,8 @@ export async function refresh() {
 	} catch {
 		ai.hardware = null;
 	}
-	if (s.engine) void checkHardware(s.ramMb);
+	// Not while a model is loaded: it takes graphics memory, so the card would look smaller than it is.
+	if (s.engine && !ai.running && !ai.writerRunning) void checkHardware(s.ramMb);
 	else ai.hardware ??= { vramMb: 0, ramMb: s.ramMb, gpuName: "" };
 }
 
@@ -140,8 +146,18 @@ export async function useModel(file: string) {
 	remember();
 }
 
+/** Picks the model for writing help ("" for the main one). */
+export async function useWriterModel(file: string) {
+	await stop();
+	ai.writerModel = file === ai.model ? "" : file;
+	remember();
+}
+
+/** Whether writing help has its own model loaded separately. */
+const ownWriter = () => !!ai.writerModel && ai.writerModel !== ai.model && ai.models.some((m) => m.file === ai.writerModel);
+
 export async function deleteModel(file: string) {
-	if (ai.model === file) await stop();
+	if (ai.model === file || ai.writerModel === file) await stop();
 	await invoke("ai_delete_model", { file });
 	await refresh();
 }
@@ -157,38 +173,64 @@ export async function stop() {
 	clearTimeout(sleepTimer);
 	if (inDesktopApp) await invoke("ai_stop").catch(() => {});
 	ai.running = false;
+	ai.writerRunning = false;
 }
 
 /** How much text, in tokens, the AI can keep in mind at once. */
 export const CONTEXT = 16384;
 
-let waking: Promise<void> | null = null;
+/** The writing help model's smaller memory: it only ever sees a few paragraphs. */
+const WRITER_CONTEXT = 4096;
 
-/** Wakes the engine up if it's asleep. Calls while it's waking up wait for the same start. */
-export function wake(): Promise<void> {
-	waking ??= start().finally(() => (waking = null));
-	return waking;
+type Slot = "main" | "writer";
+const waking: Record<Slot, Promise<void> | null> = { main: null, writer: null };
+
+/** Wakes an engine up if it's asleep. Calls while it's waking up wait for the same start. */
+export function wake(slot: Slot = "main"): Promise<void> {
+	if (slot === "writer" && !ownWriter()) slot = "main";
+	const s = slot;
+	return (waking[s] ??= start(s).finally(() => (waking[s] = null)));
 }
 
-async function start() {
+/** Graphics memory the writing help model takes, in MB, when it runs alongside the main one. */
+function writerMb(): number {
+	const file = ownWriter() ? ai.models.find((m) => m.file === ai.writerModel) : undefined;
+	const mb = file ? Math.round(file.sizeMb * 1.05) + 700 : 0;
+	// Too little room for both: it runs on the processor instead, and takes none.
+	return mb && (ai.hardware?.vramMb ?? 0) >= mb + 1500 ? mb : 0;
+}
+
+async function start(slot: Slot) {
+	const running = slot === "writer" ? ai.writerRunning : ai.running;
 	if (devUrl()) ai.running = true;
-	if (devUrl() || ai.running) return rest();
-	const file = ai.models.find((m) => m.file === ai.model);
+	if (devUrl() || running) return rest();
+	const file = ai.models.find((m) => m.file === (slot === "writer" ? ai.writerModel : ai.model));
 	if (!file) throw new Error("Pick a model first.");
 	ai.starting = true;
 	ai.error = "";
 	try {
 		const choice = MODELS.find((m) => m.file === file.file);
-		const layers = gpuLayers(choice, ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
-		const hw = ai.hardware;
+		const card = ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" };
+		// The two share the graphics card: the writing model is small and goes first,
+		// the main one plans around it.
+		const writer = writerMb();
+		const hw = slot === "writer" ? card : { ...card, vramMb: Math.max(0, card.vramMb - writer) };
+		const args = {
+			model: file.path,
+			gpuLayers: slot === "writer" && !writer ? 0 : gpuLayers(choice, hw),
+			cpuMoe: cpuExperts(choice, hw),
+			context: slot === "writer" ? WRITER_CONTEXT : CONTEXT,
+			slot,
+		};
 		try {
-			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: CONTEXT, device: hw?.device && hw.vramMb ? hw.device : null });
+			await invoke("ai_start", { ...args, device: hw.device && hw.vramMb ? hw.device : null });
 		} catch (e) {
 			// Older engines don't know how to pick a card; try once without.
-			if (!hw?.device) throw e;
-			await invoke("ai_start", { model: file.path, gpuLayers: layers, context: CONTEXT, device: null });
+			if (!hw.device) throw e;
+			await invoke("ai_start", { ...args, device: null });
 		}
-		ai.running = true;
+		if (slot === "writer") ai.writerRunning = true;
+		else ai.running = true;
 		rest();
 	} finally {
 		ai.starting = false;
@@ -198,6 +240,9 @@ async function start() {
 export const recommendedModel = () => recommended(ai.hardware ?? { vramMb: 0, ramMb: 8000, gpuName: "" });
 
 let stopRequested = false;
+/** Whether writing help's engine is awake (its own, or the main one it shares). */
+export const writerAwake = () => (ownWriter() ? ai.writerRunning : ai.running);
+
 export function stopAnswer() {
 	stopRequested = true;
 	stopClaude();
@@ -208,13 +253,14 @@ export function stopAnswer() {
  * Sends a chat request and calls `onEvent` with each streamed piece
  * (OpenAI-style "data:" lines from the engine).
  */
-export async function stream(body: object, onEvent: (data: Record<string, unknown>) => void) {
+export async function stream(body: object, onEvent: (data: Record<string, unknown>) => void, slot: Slot = "main") {
 	stopRequested = false;
 	if (usingClaude()) {
 		await claudeStream(body as Parameters<typeof claudeStream>[0], (d) => !stopRequested && onEvent(d));
 		return stopRequested;
 	}
-	await wake();
+	if (slot === "writer" && !ownWriter()) slot = "main";
+	await wake(slot);
 	let buffer = "";
 	const feed = (text: string) => {
 		buffer += text;
@@ -232,7 +278,10 @@ export async function stream(body: object, onEvent: (data: Record<string, unknow
 			}
 		}
 	};
-	const json = JSON.stringify({ ...body, stream: true });
+	// Answer straight away rather than thinking out loud first (Qwen3), or think
+	// briefly (gpt-oss, which always thinks; the thinking comes separately).
+	const effort = (body as { effort?: string }).effort === "high" ? "high" : (body as { effort?: string }).effort === "medium" ? "medium" : "low";
+	const json = JSON.stringify({ ...body, stream: true, chat_template_kwargs: { enable_thinking: false, reasoning_effort: effort } });
 	const url = devUrl();
 	if (url) {
 		const res = await fetch(`${url}/v1/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: json });
@@ -248,7 +297,7 @@ export async function stream(body: object, onEvent: (data: Record<string, unknow
 		const { Channel } = await import("@tauri-apps/api/core");
 		const channel = new Channel<string>();
 		channel.onmessage = (piece) => !stopRequested && feed(piece);
-		await invoke("ai_chat", { body: json, onChunk: channel });
+		await invoke("ai_chat", { body: json, onChunk: channel, slot });
 	}
 	feed("\n");
 	rest();

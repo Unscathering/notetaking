@@ -13,6 +13,12 @@ export interface ModelChoice {
 	needsMb: number;
 	/** Its layer count, to split it when it doesn't fully fit. */
 	layers: number;
+	/**
+	 * Mixture-of-experts models: the MB of experts in each layer. Only a few
+	 * experts work on each word, so when the model doesn't fit, experts move to
+	 * normal memory first and the rest stays on the graphics card.
+	 */
+	expertMb?: number;
 	/** 1 to 5, for the little bars. */
 	speed: number;
 	smarts: number;
@@ -20,12 +26,18 @@ export interface ModelChoice {
 
 const hf = (repo: string, file: string) => `https://huggingface.co/${repo}/resolve/main/${file}`;
 
+// Sizes allow for the chat memory (16K tokens) and the engine's own needs.
 export const MODELS: ModelChoice[] = [
-	{ id: "tiny", name: "Tiny", about: "Qwen 2.5, 1.5B. Quick answers on any computer, but simple.", file: "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf", url: hf("bartowski/Qwen2.5-1.5B-Instruct-GGUF", "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"), sizeGb: 1.0, needsMb: 1800, layers: 28, speed: 5, smarts: 1 },
-	{ id: "fast", name: "Fast", about: "Llama 3.2, 3B. Snappy and good at short writing jobs.", file: "Llama-3.2-3B-Instruct-Q4_K_M.gguf", url: hf("bartowski/Llama-3.2-3B-Instruct-GGUF", "Llama-3.2-3B-Instruct-Q4_K_M.gguf"), sizeGb: 2.0, needsMb: 3000, layers: 28, speed: 4, smarts: 2 },
-	{ id: "balanced", name: "Balanced", about: "Qwen 2.5, 7B. Good writer and reliable at organizing your cave.", file: "Qwen2.5-7B-Instruct-Q4_K_M.gguf", url: hf("bartowski/Qwen2.5-7B-Instruct-GGUF", "Qwen2.5-7B-Instruct-Q4_K_M.gguf"), sizeGb: 4.7, needsMb: 5600, layers: 28, speed: 3, smarts: 4 },
-	{ id: "smart", name: "Smart", about: "Qwen 2.5, 14B. The most thoughtful, for big plans. Needs a strong graphics card.", file: "Qwen2.5-14B-Instruct-Q4_K_M.gguf", url: hf("bartowski/Qwen2.5-14B-Instruct-GGUF", "Qwen2.5-14B-Instruct-Q4_K_M.gguf"), sizeGb: 9.0, needsMb: 10500, layers: 48, speed: 2, smarts: 5 },
+	{ id: "tiny", name: "Tiny", about: "Qwen3, 1.7B. Instant spelling and grammar fixes on any computer, but simple.", file: "Qwen3-1.7B-Q4_K_M.gguf", url: hf("unsloth/Qwen3-1.7B-GGUF", "Qwen3-1.7B-Q4_K_M.gguf"), sizeGb: 1.1, needsMb: 2900, layers: 28, speed: 5, smarts: 1 },
+	{ id: "fast", name: "Fast", about: "Qwen3 Instruct, 4B. The best for quick text fixes, and fine for simple folder jobs.", file: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", url: hf("unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"), sizeGb: 2.5, needsMb: 4800, layers: 36, speed: 5, smarts: 2 },
+	{ id: "balanced", name: "Balanced", about: "Qwen3, 8B. A good everyday helper for notes, folders and dashboards.", file: "Qwen3-8B-Q4_K_M.gguf", url: hf("unsloth/Qwen3-8B-GGUF", "Qwen3-8B-Q4_K_M.gguf"), sizeGb: 5.0, needsMb: 7300, layers: 36, speed: 4, smarts: 3 },
+	{ id: "smart", name: "Smart", about: "Qwen3, 14B. Careful with big jobs like setting up a whole cave. Needs a strong graphics card.", file: "Qwen3-14B-Q4_K_M.gguf", url: hf("unsloth/Qwen3-14B-GGUF", "Qwen3-14B-Q4_K_M.gguf"), sizeGb: 9.0, needsMb: 11500, layers: 40, speed: 3, smarts: 4 },
+	{ id: "thinker", name: "Deep thinker", about: "OpenAI's gpt-oss, 20B. Thinks before it answers, so it plans big jobs well. Needs 12 GB of graphics memory or 16 GB of memory to share.", file: "gpt-oss-20b-mxfp4.gguf", url: hf("ggml-org/gpt-oss-20b-GGUF", "gpt-oss-20b-mxfp4.gguf"), sizeGb: 12.1, needsMb: 13400, layers: 24, expertMb: 440, speed: 2, smarts: 5 },
+	{ id: "brilliant", name: "Brilliant", about: "Qwen3 Instruct, 30B. The cleverest here, and still quick: parts of it wait in normal memory. Needs 32 GB of memory.", file: "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf", url: hf("unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF", "Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf"), sizeGb: 18.6, needsMb: 20500, layers: 48, expertMb: 356, speed: 3, smarts: 5 },
 ];
+
+/** Graphics memory left free when a model is split, so Windows and Basalt stay smooth. */
+const HEADROOM_MB = 1200;
 
 export interface Hardware {
 	/** Free graphics memory on the best card, in MB (0 without one). */
@@ -38,15 +50,21 @@ export interface Hardware {
 
 /** The model that suits this computer best. */
 export function recommended(hw: Hardware): ModelChoice {
-	if (hw.vramMb >= 10500) return MODELS[3];
-	if (hw.vramMb >= 5000) return MODELS[2];
-	if (hw.vramMb >= 2800 || hw.ramMb >= 12000) return MODELS[1];
-	return MODELS[0];
+	const by = (id: string) => MODELS.find((m) => m.id === id)!;
+	if (hw.vramMb >= 10000) return by("smart");
+	if (hw.vramMb >= 6500) return by("balanced");
+	if (hw.vramMb >= 3500 || hw.ramMb >= 12000) return by("fast");
+	return by("tiny");
 }
+
+/** Graphics memory a model needs when its experts all sit in normal memory. */
+const coreMb = (m: ModelChoice) => m.needsMb - (m.expertMb ?? 0) * m.layers;
 
 /** How well a model will run here, in plain words. */
 export function fit(m: ModelChoice, hw: Hardware): "great" | "ok" | "slow" {
 	if (hw.vramMb >= m.needsMb) return "great";
+	// Experts in normal memory cost little speed, as long as there's room for them.
+	if (m.expertMb && hw.vramMb >= coreMb(m) + HEADROOM_MB && hw.ramMb * 0.6 >= m.needsMb - hw.vramMb) return "ok";
 	if (hw.vramMb + hw.ramMb * 0.5 >= m.needsMb * 1.2) return "ok";
 	return "slow";
 }
@@ -55,5 +73,14 @@ export function fit(m: ModelChoice, hw: Hardware): "great" | "ok" | "slow" {
 export function gpuLayers(m: ModelChoice | undefined, hw: Hardware): number {
 	if (!m) return hw.vramMb > 2000 ? 99 : 0;
 	if (hw.vramMb >= m.needsMb) return 99;
+	// A mixture-of-experts model keeps all its layers on the card and moves experts out instead.
+	if (m.expertMb && hw.vramMb >= coreMb(m) + HEADROOM_MB) return 99;
 	return Math.max(0, Math.floor((m.layers * (hw.vramMb - 700)) / (m.needsMb - 700)));
+}
+
+/** For a mixture-of-experts model: how many layers keep their experts in normal memory. */
+export function cpuExperts(m: ModelChoice | undefined, hw: Hardware): number {
+	if (!m?.expertMb || hw.vramMb >= m.needsMb) return 0;
+	if (hw.vramMb < coreMb(m) + HEADROOM_MB) return m.layers;
+	return Math.min(m.layers, Math.ceil((m.needsMb - (hw.vramMb - HEADROOM_MB)) / m.expertMb));
 }

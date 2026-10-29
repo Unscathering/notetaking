@@ -2,13 +2,16 @@
 	// The model cards: which suits this PC, how fast and clever each is, and
 	// whether it's downloaded.
 	import { MODELS, fit } from "../../ai/models";
-	import { ai, deleteModel, downloadModel, recommendedModel, useModel } from "../../ai/engine.svelte";
+	import { ai, deleteModel, downloadModel, recommendedModel, useModel, useWriterModel } from "../../ai/engine.svelte";
 	import { icon } from "../icons";
 
 	const hw = $derived(ai.hardware ?? { vramMb: 0, ramMb: 0, gpuName: "" });
 	const best = $derived(recommendedModel());
 	const installed = (file: string) => ai.models.some((m) => m.file === file);
 	const gb = (mb: number) => `${Math.round(mb / 1024)} GB`;
+	/** Model files on this PC that aren't one of the cards (older ones, or ones you added). */
+	const others = $derived(ai.models.filter((f) => !MODELS.some((m) => m.file === f.file)));
+	const label = (file: string) => MODELS.find((m) => m.file === file)?.name ?? file.replace(/\.gguf$/, "");
 	const FIT = { great: "Runs great on this PC", ok: "Runs, a little slower", slow: "Too big for this PC, will be slow" };
 </script>
 
@@ -33,7 +36,7 @@
 				<span>Smarts <i>{#each [1, 2, 3, 4, 5] as k (k)}<em class:on={k <= m.smarts}></em>{/each}</i></span>
 			</div>
 			<div class="foot">
-				<span class="fit fit-{f}">{FIT[f]}</span>
+				<span class="fit fit-{f}">{f === "ok" && m.expertMb && hw.vramMb ? "Runs well, with part of it in memory" : FIT[f]}</span>
 				{#if have}
 					{#if ai.model === m.file}
 						<span class="using">{@html icon("check", 13)} In use</span>
@@ -49,7 +52,89 @@
 	{/each}
 </div>
 
+{#if others.length}
+	<h4>Other models on this PC</h4>
+	<div class="others">
+		{#each others as f (f.file)}
+			<div class="other" class:is-on={ai.model === f.file}>
+				<span class="name" title={f.file}>{label(f.file)}</span>
+				<span class="size">{(f.sizeMb / 1024).toFixed(1)} GB</span>
+				{#if ai.model === f.file}
+					<span class="using">{@html icon("check", 13)} In use</span>
+				{:else}
+					<button class="ghost" onclick={() => useModel(f.file)}>Use this</button>
+				{/if}
+				<button class="ghost danger" title="Delete this model from your PC" onclick={() => confirm(`Delete ${label(f.file)} (${(f.sizeMb / 1024).toFixed(1)} GB) from this PC?`) && deleteModel(f.file)}>{@html icon("trash", 13)}</button>
+			</div>
+		{/each}
+	</div>
+{/if}
+
+{#if ai.models.length > 1}
+	<h4>Writing help</h4>
+	<label class="writer">
+		<span>Grammar checks and rewrites use</span>
+		<select value={ai.writerModel || ai.model} onchange={(e) => useWriterModel(e.currentTarget.value)}>
+			{#each ai.models as f (f.file)}<option value={f.file}>{label(f.file)}{f.file === ai.model ? " (the chat model)" : ""}</option>{/each}
+		</select>
+	</label>
+	<p class="note">A small model here (like Fast) makes fixes near instant while a big one handles chats. Both stay loaded, so they share your graphics memory.</p>
+{/if}
+
 <style>
+	h4 {
+		margin: 16px 0 8px;
+		font-size: 12px;
+		font-weight: 650;
+		color: var(--heading);
+	}
+	.others {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.other {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 10px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		font-size: 12.5px;
+	}
+	.other .name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.other .size {
+		margin-left: 0;
+	}
+	.writer {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px;
+		font-size: 12.5px;
+	}
+	.writer select {
+		flex: 1;
+		min-width: 160px;
+		padding: 5px 8px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--raised);
+		color: var(--text);
+		font: inherit;
+	}
+	.note {
+		margin: 6px 0 0;
+		font-size: 11.5px;
+		line-height: 1.45;
+		color: var(--muted);
+	}
 	.hw {
 		display: flex;
 		align-items: center;

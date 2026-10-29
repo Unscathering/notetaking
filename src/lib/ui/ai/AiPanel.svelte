@@ -32,12 +32,15 @@
 	let timing = $state(false);
 	let speedError = $state("");
 
-	async function runSpeedTest() {
+	/** Which model the last speed test timed. */
+	let tested = $state<"writer" | "main">("writer");
+	async function runSpeedTest(slot: "writer" | "main" = "writer") {
 		timing = true;
 		speed = null;
 		speedError = "";
+		tested = slot;
 		try {
-			speed = await speedTest();
+			speed = await speedTest(slot);
 		} catch (e) {
 			speedError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -100,6 +103,7 @@
 	const online = $derived(usingClaude());
 	/** The chat can be used: a model on this PC, or Claude. */
 	const ready = $derived(ai.phase === "ready" || online);
+	const separateWriter = $derived(!online && !!ai.writerModel && ai.writerModel !== ai.model);
 	const modelName = $derived(online ? claudeName() : (MODELS.find((m) => m.file === ai.model)?.name ?? (ai.model ? ai.model.replace(/\.gguf$/, "") : "No model")));
 	const status = $derived(chat.busy ? "Thinking…" : online ? "Online" : ai.starting ? "Waking up…" : ai.running ? "Ready" : "Sleeping");
 
@@ -209,8 +213,16 @@
 			{#if aiPanel.view === "models" && ready}
 				<section>
 					<h3>Speed test</h3>
-					<p class="hint">Times a grammar check of one paragraph with {modelName}, the way writing help does it.</p>
-					<button class="ghost" disabled={timing || chat.busy} onclick={runSpeedTest}>{@html icon("zap", 13)} {timing ? "Testing…" : speed ? "Test again" : "Test the speed"}</button>
+					{#if separateWriter}
+						<p class="hint">Times a grammar check of one paragraph with each model: the writing help one, and the one for chats.</p>
+						<div class="row-buttons">
+							<button class="ghost" disabled={timing || chat.busy} onclick={() => runSpeedTest("writer")}>{@html icon("zap", 13)} {timing && tested === "writer" ? "Testing…" : "Test writing help"}</button>
+							<button class="ghost" disabled={timing || chat.busy} onclick={() => runSpeedTest("main")}>{@html icon("zap", 13)} {timing && tested === "main" ? "Testing…" : "Test the chat model"}</button>
+						</div>
+					{:else}
+						<p class="hint">Times a grammar check of one paragraph with {modelName}, the way writing help does it.</p>
+						<button class="ghost" disabled={timing || chat.busy} onclick={() => runSpeedTest()}>{@html icon("zap", 13)} {timing ? "Testing…" : speed ? "Test again" : "Test the speed"}</button>
+					{/if}
 					{#if speed}
 						<div class="speed">
 							{#if speed.wake}<div><b>{speed.wake.toFixed(1)} s</b><span>to wake up (only the first time after a nap)</span></div>{/if}
@@ -503,6 +515,11 @@
 		font-size: 12px;
 		line-height: 1.5;
 		color: var(--muted);
+	}
+	.row-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 	.own-model {
 		margin-top: 14px;

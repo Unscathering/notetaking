@@ -23,22 +23,46 @@ use std::{
 use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 
+/// One running copy of the engine with a model loaded.
 #[derive(Default)]
-pub struct Engine {
+pub struct Server {
     child: Mutex<Option<Child>>,
     port: Mutex<u16>,
-    cancel_download: AtomicBool,
     cancel_chat: AtomicBool,
 }
 
-impl Engine {
-    /// Stops the engine, if it's running. Called when Basalt closes too.
-    pub fn stop(&self) {
+impl Server {
+    fn stop(&self) {
         if let Some(mut child) = self.child.lock().unwrap().take() {
             let _ = child.kill();
             let _ = child.wait();
         }
         *self.port.lock().unwrap() = 0;
+    }
+}
+
+/// The main engine (chat and everything else), and a second one that only
+/// runs when writing help is set to use its own small, fast model.
+#[derive(Default)]
+pub struct Engine {
+    main: Server,
+    writer: Server,
+    cancel_download: AtomicBool,
+}
+
+impl Engine {
+    /// Stops both engines, if they're running. Called when Basalt closes too.
+    pub fn stop(&self) {
+        self.main.stop();
+        self.writer.stop();
+    }
+
+    fn server(&self, slot: Option<&str>) -> &Server {
+        if slot == Some("writer") {
+            &self.writer
+        } else {
+            &self.main
+        }
     }
 }
 
@@ -150,7 +174,7 @@ pub async fn ai_status(app: AppHandle, engine: State<'_, Engine>) -> Result<Stat
         engine: find_server(&dir.join("engine")).is_some(),
         models,
         ram_mb: sys.total_memory() / 1_048_576,
-        running: *engine.port.lock().unwrap() != 0,
+        running: *engine.main.port.lock().unwrap() != 0,
         folder: dir.to_string_lossy().into_owned(),
     })
 }
@@ -469,58 +493,76 @@ pub fn ai_delete_model(app: AppHandle, file: String) -> Result<(), String> {
 }
 
 /// Starts the engine with a model, offloading `gpu_layers` layers to the
-/// graphics card. Returns once it's ready to answer.
+/// graphics card. For a mixture-of-experts model, `cpu_moe` is how many layers
+/// keep their experts in normal memory instead (only a few experts work on
+/// each word, so that costs little speed). Returns once it's ready to answer.
 #[tauri::command]
-pub async fn ai_start(app: AppHandle, engine: State<'_, Engine>, model: String, gpu_layers: u32, context: u32, device: Option<String>) -> Result<u16, String> {
-    engine.stop();
-    let server = find_server(&root(&app)?.join("engine")).ok_or("The AI engine isn't installed yet.")?;
+#[allow(clippy::too_many_arguments)]
+pub async fn ai_start(
+    app: AppHandle,
+    engine: State<'_, Engine>,
+    model: String,
+    gpu_layers: u32,
+    context: u32,
+    device: Option<String>,
+    cpu_moe: Option<u32>,
+    slot: Option<String>,
+) -> Result<u16, String> {
+    let server = engine.server(slot.as_deref());
+    server.stop();
+    let exe = find_server(&root(&app)?.join("engine")).ok_or("The AI engine isn't installed yet.")?;
     let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
     let child = quiet(
-        Command::new(&server)
+        Command::new(&exe)
             .args(["-m", &model, "--host", "127.0.0.1", "--port", &port.to_string()])
             .args(["-ngl", &gpu_layers.to_string(), "-c", &context.to_string(), "--jinja"])
             // A smaller memory of the chat so far (half size, nearly the same quality), so more fits.
             .args(["-ctk", "q8_0"])
             // Long answers on a slow PC can take a while; don't cut them off (the default is 10 minutes).
             .args(["--timeout", "3600"])
+            .args(cpu_moe.filter(|&n| n > 0).map(|n| vec!["--n-cpu-moe".to_string(), n.to_string()]).unwrap_or_default())
             // Only the chosen graphics card, not the one built into the processor.
             .args(device.as_deref().map(|d| vec!["--device", d]).unwrap_or_default())
-            .current_dir(server.parent().unwrap_or(Path::new("."))),
+            .current_dir(exe.parent().unwrap_or(Path::new("."))),
     )
     .stdin(Stdio::null())
     .stdout(Stdio::null())
     .stderr(Stdio::null())
     .spawn()
     .map_err(|e| format!("Couldn't start the AI engine: {e}"))?;
-    *engine.child.lock().unwrap() = Some(child);
+    *server.child.lock().unwrap() = Some(child);
     let http = client()?;
-    // Loading a model can take a little while the first time.
-    for _ in 0..240 {
+    // Loading a model can take a little while the first time (big ones longer).
+    for _ in 0..480 {
         tokio::time::sleep(Duration::from_millis(500)).await;
-        let exited = engine.child.lock().unwrap().as_mut().map(|c| c.try_wait().ok().flatten().is_some()).unwrap_or(true);
+        let exited = server.child.lock().unwrap().as_mut().map(|c| c.try_wait().ok().flatten().is_some()).unwrap_or(true);
         if exited {
-            engine.stop();
+            server.stop();
             return Err("The AI engine stopped while loading the model. It may not fit in this computer's memory; try a smaller model.".into());
         }
         if let Ok(res) = http.get(format!("http://127.0.0.1:{port}/health")).send().await {
             if res.status().is_success() {
-                *engine.port.lock().unwrap() = port;
+                *server.port.lock().unwrap() = port;
                 return Ok(port);
             }
         }
     }
-    engine.stop();
+    server.stop();
     Err("The AI engine took too long to start.".into())
 }
 
 #[tauri::command]
-pub fn ai_stop(engine: State<'_, Engine>) {
-    engine.stop();
+pub fn ai_stop(engine: State<'_, Engine>, slot: Option<String>) {
+    match slot {
+        Some(s) => engine.server(Some(&s)).stop(),
+        None => engine.stop(),
+    }
 }
 
 /// Sends a chat to the engine and passes its streamed answer back piece by piece.
 #[tauri::command]
-pub async fn ai_chat(engine: State<'_, Engine>, body: String, on_chunk: Channel<String>) -> Result<(), String> {
+pub async fn ai_chat(engine: State<'_, Engine>, body: String, on_chunk: Channel<String>, slot: Option<String>) -> Result<(), String> {
+    let engine = engine.server(slot.as_deref());
     let port = *engine.port.lock().unwrap();
     if port == 0 {
         return Err("The AI engine isn't running.".into());
@@ -561,7 +603,8 @@ pub async fn ai_chat(engine: State<'_, Engine>, body: String, on_chunk: Channel<
 
 #[tauri::command]
 pub fn ai_stop_chat(engine: State<'_, Engine>) {
-    engine.cancel_chat.store(true, Ordering::SeqCst);
+    engine.main.cancel_chat.store(true, Ordering::SeqCst);
+    engine.writer.cancel_chat.store(true, Ordering::SeqCst);
 }
 
 #[cfg(test)]
