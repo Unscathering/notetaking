@@ -1,0 +1,7 @@
+.sidebar {
+  opacity: 0.7;
+  transition: opacity var(--dur) var(--ease);
+}
+.sidebar:hover {
+  opacity: 1;
+}

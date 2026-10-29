@@ -1,0 +1,4 @@
+.cm-content .cm-line:has(.cm-bullet),
+.cm-content .cm-line:has(.cm-task) {
+  line-height: 1.45;
+}

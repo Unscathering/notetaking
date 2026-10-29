@@ -1,0 +1,14 @@
+.cm-callout {
+  border-left-width: 0 !important;
+  background: var(--raised) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.cm-callout-first {
+  border-top-left-radius: calc(var(--radius) * 1.4) !important;
+  border-top-right-radius: calc(var(--radius) * 1.4) !important;
+  border-top: 3px solid var(--callout) !important;
+}
+.cm-callout-last {
+  border-bottom-left-radius: calc(var(--radius) * 1.4) !important;
+  border-bottom-right-radius: calc(var(--radius) * 1.4) !important;
+}

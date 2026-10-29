@@ -1,0 +1,23 @@
+/* Dashboard notes: add "cssclass: dashboard" to a note's properties. */
+.note-dashboard .cm-content {
+  max-width: 1100px;
+}
+.note-dashboard .cm-props {
+  display: none;
+}
+.note-dashboard .cm-h1 {
+  font-size: 2.4em;
+  letter-spacing: -0.02em;
+}
+.note-dashboard .basalt-block {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.4);
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+}
+.note-dashboard .basalt-cards {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.note-dashboard .basalt-count {
+  color: var(--accent);
+}

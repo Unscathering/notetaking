@@ -1,0 +1,17 @@
+{
+  "name": "Espresso",
+  "base": "Basalt",
+  "colors": {
+    "bg": "#1b1512",
+    "panel": "#211a16",
+    "raised": "#2b221d",
+    "border": "#3a2e27",
+    "text": "#efe4d8",
+    "muted": "#a08e7e",
+    "accent": "#d9a066",
+    "onAccent": "#1b1209",
+    "heading": "#f6ebdf",
+    "link": "#e6b17e",
+    "code": "#cfa47a"
+  }
+}

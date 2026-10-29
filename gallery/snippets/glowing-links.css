@@ -1,0 +1,9 @@
+.cm-wikilink {
+  text-decoration: none !important;
+  border-radius: 4px;
+  transition: box-shadow var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.cm-wikilink:hover {
+  background: color-mix(in srgb, var(--link) 12%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--link) 45%, transparent);
+}

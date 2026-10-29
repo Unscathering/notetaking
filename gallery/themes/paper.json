@@ -1,0 +1,17 @@
+{
+  "name": "Paper",
+  "base": "Basalt",
+  "colors": {
+    "bg": "#faf6ee",
+    "panel": "#f3eee3",
+    "raised": "#fffdf8",
+    "border": "#e4dccb",
+    "text": "#2c2620",
+    "muted": "#857a6c",
+    "accent": "#b0562e",
+    "onAccent": "#ffffff",
+    "heading": "#1f1a15",
+    "link": "#9c4a26",
+    "code": "#6d4c8a"
+  }
+}

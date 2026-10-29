@@ -1,0 +1,7 @@
+.cm-content .cm-h1, .cm-content .cm-h2 {
+  color: var(--accent);
+}
+.cm-content .cm-h2 {
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  padding-bottom: 4px;
+}

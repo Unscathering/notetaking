@@ -1,0 +1,160 @@
+{
+  "about": "Snippets, themes and dashboards for Basalt, shared by people who use it. Add yours with a pull request: see MODDING.md.",
+  "snippets": [
+    {
+      "id": "dashboard",
+      "name": "Dashboard",
+      "about": "For notes with cssclass: dashboard. Wide, no properties header, big titles, roomy cards.",
+      "author": "Basalt",
+      "file": "snippets/dashboard.css"
+    },
+    {
+      "id": "accent-headings",
+      "name": "Accent headings",
+      "about": "Headings in your accent color, with a soft underline.",
+      "author": "Basalt",
+      "file": "snippets/accent-headings.css"
+    },
+    {
+      "id": "big-checkboxes",
+      "name": "Big checkboxes",
+      "about": "Larger, rounder checkboxes for task lists.",
+      "author": "Basalt",
+      "file": "snippets/big-checkboxes.css"
+    },
+    {
+      "id": "quiet-sidebar",
+      "name": "Quiet sidebar",
+      "about": "A calmer sidebar: smaller, lighter names until you hover it.",
+      "author": "Basalt",
+      "file": "snippets/quiet-sidebar.css"
+    },
+    {
+      "id": "rainbow-headings",
+      "name": "Rainbow headings",
+      "about": "Each heading level gets its own color, from the accent outward.",
+      "author": "Basalt",
+      "file": "snippets/rainbow-headings.css"
+    },
+    {
+      "id": "centered-titles",
+      "name": "Centered titles",
+      "about": "The first heading of every note centered, with a thin rule under it.",
+      "author": "Basalt",
+      "file": "snippets/centered-titles.css"
+    },
+    {
+      "id": "glowing-links",
+      "name": "Glowing links",
+      "about": "Links to other notes glow softly when you hover them.",
+      "author": "Basalt",
+      "file": "snippets/glowing-links.css"
+    },
+    {
+      "id": "card-callouts",
+      "name": "Card callouts",
+      "about": "Callouts as raised cards with rounded corners and a shadow.",
+      "author": "Basalt",
+      "file": "snippets/card-callouts.css"
+    },
+    {
+      "id": "compact-lists",
+      "name": "Compact lists",
+      "about": "Tighter bullet and task lists, for notes full of them.",
+      "author": "Basalt",
+      "file": "snippets/compact-lists.css"
+    }
+  ],
+  "themes": [
+    {
+      "id": "espresso",
+      "name": "Espresso",
+      "about": "Warm coffee browns with a crema accent.",
+      "author": "Basalt",
+      "file": "themes/espresso.json",
+      "swatch": [
+        "#1b1512",
+        "#2b221d",
+        "#d9a066",
+        "#efe4d8"
+      ]
+    },
+    {
+      "id": "arctic",
+      "name": "Arctic",
+      "about": "Cool, bright and quiet. A light theme for daytime.",
+      "author": "Basalt",
+      "file": "themes/arctic.json",
+      "swatch": [
+        "#f4f7fa",
+        "#ffffff",
+        "#2f7fd8",
+        "#1f2a36"
+      ]
+    },
+    {
+      "id": "synthwave",
+      "name": "Synthwave",
+      "about": "Neon pink and violet on deep purple.",
+      "author": "Basalt",
+      "file": "themes/synthwave.json",
+      "swatch": [
+        "#160f26",
+        "#261a42",
+        "#ff4fa3",
+        "#f2e9ff"
+      ]
+    },
+    {
+      "id": "paper",
+      "name": "Paper",
+      "about": "Warm off-white, like a good notebook.",
+      "author": "Basalt",
+      "file": "themes/paper.json",
+      "swatch": [
+        "#faf6ee",
+        "#fffdf8",
+        "#b0562e",
+        "#2c2620"
+      ]
+    },
+    {
+      "id": "terminal",
+      "name": "Terminal",
+      "about": "Green on black, for the hacker in you.",
+      "author": "Basalt",
+      "file": "themes/terminal.json",
+      "swatch": [
+        "#050805",
+        "#0d180d",
+        "#3dff6e",
+        "#b8f5b8"
+      ]
+    }
+  ],
+  "dashboards": [
+    {
+      "id": "home",
+      "name": "Home dashboard",
+      "about": "What's due, open tasks, your projects as cards, habits and tags. Uses the dashboard snippet.",
+      "author": "Basalt",
+      "file": "dashboards/home.md",
+      "snippet": "snippets/dashboard.css"
+    },
+    {
+      "id": "reading-list",
+      "name": "Reading list",
+      "about": "Books by status from a Reading folder: reading now, up next, finished. Give book notes status and author properties.",
+      "author": "Basalt",
+      "file": "dashboards/reading-list.md",
+      "snippet": "snippets/dashboard.css"
+    },
+    {
+      "id": "weekly-review",
+      "name": "Weekly review",
+      "about": "Last week's tasks, what's open, and notes linking here. Pairs with the weekly AI recap.",
+      "author": "Basalt",
+      "file": "dashboards/weekly-review.md"
+    }
+  ]
+}

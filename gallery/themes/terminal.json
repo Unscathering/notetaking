@@ -1,0 +1,17 @@
+{
+  "name": "Terminal",
+  "base": "Basalt",
+  "colors": {
+    "bg": "#050805",
+    "panel": "#081008",
+    "raised": "#0d180d",
+    "border": "#163016",
+    "text": "#b8f5b8",
+    "muted": "#5f9a5f",
+    "accent": "#3dff6e",
+    "onAccent": "#021006",
+    "heading": "#d8ffd8",
+    "link": "#7affa0",
+    "code": "#ffe066"
+  }
+}

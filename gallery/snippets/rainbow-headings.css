@@ -1,0 +1,4 @@
+.cm-content .cm-h1 { color: var(--accent); }
+.cm-content .cm-h2 { color: color-mix(in srgb, var(--accent) 70%, #5b9bf0); }
+.cm-content .cm-h3 { color: color-mix(in srgb, var(--accent) 45%, #7fc48b); }
+.cm-content .cm-h4 { color: color-mix(in srgb, var(--accent) 30%, #b07cf0); }

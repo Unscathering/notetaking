@@ -23,6 +23,7 @@
 	import MotionPage from "./settings/MotionPage.svelte";
 	import WritingPage from "./settings/WritingPage.svelte";
 	import SnippetsPage from "./settings/SnippetsPage.svelte";
+	import GalleryPage from "./settings/GalleryPage.svelte";
 
 	interface Props {
 		ms: number;
@@ -40,6 +41,7 @@
 		{ id: "layout", label: "Layout", ico: "layout", title: "Layout", about: "Corners, spacing and the size of things.", page: LayoutPage },
 		{ id: "motion", label: "Motion", ico: "zap", title: "Motion", about: "How the app moves. Every example is playing live.", page: MotionPage },
 		{ id: "writing", label: "Writing", ico: "pencil", title: "Writing", about: "Helpers for when you're writing.", page: WritingPage },
+		{ id: "gallery", label: "Gallery", ico: "globe", title: "Gallery", about: "Themes, snippets and dashboards shared by people who use Basalt. One click adds one.", page: GalleryPage },
 		{ id: "snippets", label: "Snippets", ico: "code", title: "CSS snippets", about: "Your own styles, on top of everything else. For tinkerers.", page: SnippetsPage },
 	];
 

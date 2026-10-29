@@ -105,6 +105,11 @@ check again before a public launch.
   The desktop app fetches the page (`src-tauri/src/web.rs`), Readability
   finds the article and Turndown makes it Markdown (both loaded only then);
   it's saved in `Clippings` with `source` and `clipped` properties.
+- Gallery: `gallery/` in this repository (`gallery.json` lists the
+  snippets, themes and dashboards); `src/lib/gallery.svelte.ts` reads it
+  from GitHub and installs entries; `ui/settings/GalleryPage.svelte`.
+- `basalt://` links: `src/lib/links.ts` (with the deep-link and
+  single-instance plugins in `src-tauri/src/lib.rs`).
 - `src/lib/writing.svelte.ts`: writing settings (typewriter, dimming,
   spell check, focus mode).
 - `src/lib/ai/`: Basalt's local AI. `engine.svelte.ts` sets up, wakes and

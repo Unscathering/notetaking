@@ -1,0 +1,17 @@
+{
+  "name": "Synthwave",
+  "base": "Midnight",
+  "colors": {
+    "bg": "#160f26",
+    "panel": "#1c1331",
+    "raised": "#261a42",
+    "border": "#3a2862",
+    "text": "#f2e9ff",
+    "muted": "#a28fcf",
+    "accent": "#ff4fa3",
+    "onAccent": "#1a0614",
+    "heading": "#ffffff",
+    "link": "#4fd7ff",
+    "code": "#ffcc4f"
+  }
+}

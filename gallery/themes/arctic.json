@@ -1,0 +1,17 @@
+{
+  "name": "Arctic",
+  "base": "Basalt",
+  "colors": {
+    "bg": "#f4f7fa",
+    "panel": "#eaf0f5",
+    "raised": "#ffffff",
+    "border": "#d5dee7",
+    "text": "#1f2a36",
+    "muted": "#6a7a8c",
+    "accent": "#2f7fd8",
+    "onAccent": "#ffffff",
+    "heading": "#0f1a26",
+    "link": "#2369b8",
+    "code": "#9b3b9b"
+  }
+}

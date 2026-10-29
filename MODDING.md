@@ -122,6 +122,21 @@ template named like a built-in one ("Daily note", "Dashboard") replaces it.
 **Appearance → Save** writes the whole look to a `.basalt-theme.json` file;
 **Load** reads one. Share themes as those files.
 
+## Sharing in the gallery
+
+**Appearance → Gallery** shows themes, snippets and dashboards from the
+`gallery` folder of Basalt's repository; one click adds one. To share yours:
+
+1. Fork the repository and add your file: a snippet to `gallery/snippets/`
+   (a `.css` file), a theme to `gallery/themes/` (a `.json` file: `name`,
+   `base` (a built-in theme to start from) and any of `colors`, `type`,
+   `headings`, `shape`, `glass` as in a saved theme), or a dashboard to
+   `gallery/dashboards/` (a `.md` note).
+2. Add an entry for it to `gallery/gallery.json`: `id`, `name`, `about`,
+   `author` and `file`; themes also have `swatch` (four colors: background,
+   panel, accent, text) and dashboards can name the `snippet` they need.
+3. Open a pull request.
+
 ## Putting it together: a dashboard
 
 1. Make a note from the **Dashboard** template.
