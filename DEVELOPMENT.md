@@ -1,5 +1,7 @@
 # Developing Basalt
 
+Starting fresh? Read `HANDOFF.md` first.
+
 Basalt is a note-taking app in the spirit of Obsidian: notes are plain
 Markdown files in a folder the user picks. The goals, in order: smooth,
 light, sleek, and customizable without writing CSS.
