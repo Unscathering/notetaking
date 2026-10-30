@@ -8,8 +8,14 @@ commands, releasing) and `MODDING.md` (snippets, live blocks, dashboards).
 
 - Unscathering (GitHub: Unscathering). Builds things by describing them;
   is a beginner at code, so explain everything in plain words, no jargon.
-- Uses Windows. PC: AMD Ryzen 7 8845HS, 16 GB RAM (often ~15 GB in use),
-  NVIDIA RTX 4050 Laptop GPU (6 GB) plus the built-in AMD Radeon 780M.
+- Uses Windows 11, on two machines:
+  - Desktop "excali": AMD Ryzen 7 7700, 32 GB RAM, NVIDIA RTX 4070 Ti
+    (12 GB), Gigabyte B650M S2H motherboard, one 1 TB SSD (nearly full).
+  - Laptop: AMD Ryzen 7 8845HS, 16 GB RAM (often ~15 GB in use), NVIDIA RTX
+    4050 Laptop GPU (6 GB) plus the built-in AMD Radeon 780M.
+- Next interest (late October 2026): trying Linux, CachyOS with Hyprland, on
+  the desktop, installed on a second SSD (or an external USB SSD) so Windows
+  stays untouched, with custom dotfiles. Not started yet.
 - Loves things that are sleek, smooth, light and deeply customizable
   (glass looks, themes, dashboards like the Obsidian "Komorebi" style).
 
